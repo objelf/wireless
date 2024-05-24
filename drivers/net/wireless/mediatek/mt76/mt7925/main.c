@@ -1567,6 +1567,35 @@ free:
 
 	return ret;
 }
+static int
+mt7925_change_sta_links(struct ieee80211_hw *hw, struct ieee80211_vif *vif,
+			struct ieee80211_sta *sta, u16 old_links, u16 new_links)
+{
+#if 0 //sean wang
+	unsigned long add = new_links & ~old_links;
+	unsigned long rem = old_links & ~new_links;
+#endif
+	struct mt792x_dev *dev = mt792x_hw_dev(hw);
+	int ret = 0;
+
+	if (old_links == new_links)
+		return 0;
+
+	mt792x_mutex_acquire(dev);
+#if 0 //sean wang
+	ret = mt7925_mac_sta_rem_links(dev, vif, sta, rem);
+	if (ret)
+		goto out;
+
+	ret = mt7925_mac_sta_add_links(dev, vif, sta, add);
+	if (ret)
+		goto out;
+out:
+#endif
+	mt792x_mutex_release(dev);
+
+	return ret;
+}
 
 const struct ieee80211_ops mt7925_ops = {
 	.tx = mt792x_tx,
@@ -1627,6 +1656,7 @@ const struct ieee80211_ops mt7925_ops = {
 	.vif_cfg_changed = mt7925_vif_cfg_changed,
 	.link_info_changed = mt7925_link_info_changed,
 	.change_vif_links = mt7925_change_vif_links,
+	.change_sta_links = mt7925_change_sta_links,
 };
 EXPORT_SYMBOL_GPL(mt7925_ops);
 
