@@ -92,12 +92,17 @@ struct mt792x_link_sta {
 	unsigned long last_txs;
 
 	struct mt76_connac_sta_key_conf bip;
+
+	struct mt792x_sta *sta;
 };
 
 struct mt792x_sta {
 	struct mt792x_link_sta deflink; /* must be first */
+	struct mt792x_link_sta __rcu *link[IEEE80211_MLD_MAX_NUM_LINKS];
 
 	struct mt792x_vif *vif;
+
+	u8 pri_link;
 };
 
 DECLARE_EWMA(rssi, 10, 8);
@@ -108,17 +113,26 @@ struct mt792x_chanctx {
 
 struct mt792x_bss_conf {
 	struct mt76_vif mt76; /* must be first */
+	struct mt792x_vif *vif;
 	struct ewma_rssi rssi;
 	struct ieee80211_tx_queue_params queue_params[IEEE80211_NUM_ACS];
+
+	unsigned int link_id;
 };
 
 struct mt792x_vif {
 	struct mt792x_bss_conf bss_conf; /* must be first */
+	struct mt792x_bss_conf __rcu *link_conf[IEEE80211_MLD_MAX_NUM_LINKS];
 
 	struct mt792x_sta sta;
 	struct mt792x_sta *wep_sta;
 
 	struct mt792x_phy *phy;
+
+	u16 valid_links;
+	u8 deflink_id;
+
+	bool mlo;
 };
 
 struct mt792x_phy {
@@ -220,6 +234,29 @@ struct mt792x_dev {
 	u32 backup_l1;
 	u32 backup_l2;
 };
+
+static inline struct mt792x_bss_conf *
+mt792x_vif_to_link(struct mt792x_vif *mvif, u8 link_id)
+{
+	if (!mvif->mlo ||
+	    link_id >= IEEE80211_LINK_UNSPECIFIED)
+		return &mvif->bss_conf;
+
+	return rcu_dereference_protected(mvif->link_conf[link_id],
+		lockdep_is_held(&mvif->phy->dev->mt76.mutex));
+}
+
+static inline struct mt792x_link_sta *
+mt792x_sta_to_link(struct mt792x_sta *msta, u8 link_id)
+{
+	if (!msta->vif->mlo ||
+	    link_id >= IEEE80211_LINK_UNSPECIFIED)
+		return &msta->deflink;
+
+	return rcu_dereference_protected(msta->link[link_id],
+		lockdep_is_held(&msta->vif->phy->dev->mt76.mutex));
+}
+
 
 static inline struct mt792x_dev *
 mt792x_hw_dev(struct ieee80211_hw *hw)

@@ -1415,6 +1415,159 @@ static void mt7925_link_info_changed(struct ieee80211_hw *hw,
 	mt792x_mutex_release(dev);
 }
 
+static int
+mt7925_change_vif_links(struct ieee80211_hw *hw, struct ieee80211_vif *vif,
+		        u16 old_links, u16 new_links,
+			struct ieee80211_bss_conf *old[IEEE80211_MLD_MAX_NUM_LINKS])
+{
+	struct mt792x_bss_conf *mconfs[IEEE80211_MLD_MAX_NUM_LINKS] = {}, *mconf;
+	struct mt792x_link_sta *mlinks[IEEE80211_MLD_MAX_NUM_LINKS] = {}, *mlink;
+	struct mt792x_vif *mvif = (struct mt792x_vif *)vif->drv_priv;
+	unsigned long add = new_links & ~old_links;
+	unsigned long rem = old_links & ~new_links;
+	struct mt792x_dev *dev = mt792x_hw_dev(hw);
+#if 0 //sean wang
+	struct mt792x_phy *phy = mt792x_hw_phy(hw);
+#endif
+	unsigned int link_id;
+	bool is_new = false;
+	int ret = 0;
+
+	if (old_links == new_links)
+		return 0;
+
+	/* FIXME: the limitation should be removed later */
+	if (mvif->deflink_id == IEEE80211_LINK_UNSPECIFIED && (add & 0xe))
+		return -EOPNOTSUPP;
+	
+	mt792x_mutex_acquire(dev);
+
+	/* allocate new link structures */
+	for_each_set_bit(link_id, &add, IEEE80211_MLD_MAX_NUM_LINKS) {
+		if (!old_links) {
+			mvif->deflink_id = link_id;
+			mconf = &mvif->bss_conf;
+			mlink = &mvif->sta.deflink;
+		} else {
+			is_new = true;
+			mconf = devm_kzalloc(dev->mt76.dev, sizeof(*mconf), GFP_KERNEL);
+			mlink = devm_kzalloc(dev->mt76.dev, sizeof(*mlink), GFP_KERNEL);
+		}
+		mconfs[link_id] = mconf;
+		mlinks[link_id] = mlink;
+		if (!mconf || !mlink) {
+			ret = -ENOMEM;
+			goto free;
+		}
+		mconf->link_id = link_id;
+		mconf->vif = mvif;
+		mlink->sta = &mvif->sta;
+		mlink->wcid.link_id = link_id;
+		mlink->wcid.link_valid = !!vif->valid_links;
+	}
+
+	/* must remove first */
+	for_each_set_bit(link_id, &rem, IEEE80211_MLD_MAX_NUM_LINKS) {
+		mconf = mt792x_vif_to_link(mvif, link_id);
+		mlink = mt792x_sta_to_link(&mvif->sta, link_id);
+		if (!mconf || !mlink)
+			continue;
+
+		/* default resource should be handled in .remove_interface() */
+		if (mconf != &mvif->bss_conf) {
+#if 0 //sean wang
+			mt7925_mac_bss_uninit_link(dev, old[link_id], mconf, mlink);
+#endif
+			devm_kfree(dev->mt76.dev, mconf);
+			devm_kfree(dev->mt76.dev, mlink);
+		}
+		rcu_assign_pointer(mvif->link_conf[link_id], NULL);
+		rcu_assign_pointer(mvif->sta.link[link_id], NULL);
+	}
+
+	/* assigne new links */
+	for_each_set_bit(link_id, &add, IEEE80211_MLD_MAX_NUM_LINKS) {
+		mconf = mconfs[link_id];
+		mlink = mlinks[link_id];
+
+		rcu_assign_pointer(mvif->link_conf[link_id], mconf);
+		rcu_assign_pointer(mvif->sta.link[link_id], mlink);
+#if 0 //sean wang
+		/* Reinit for link mac address */
+		if (!is_new)
+			mt7925_mac_bss_uninit_link(dev, &vif->bss_conf, &mvif->bss_conf, &mvif->sta.deflink);
+		ret = mt7925_mac_bss_init_link(dev, mt792x_vif_to_bss_conf(vif, link_id), mconf, mlink);
+		if (ret)
+			goto free;
+#endif
+	}
+
+	mvif->valid_links = new_links;
+	mvif->mlo = ieee80211_vif_is_mld(vif) || (hweight16(new_links) > 1);
+
+	if (hweight16(vif->active_links) == 2) {
+		struct ieee80211_sta *sta;
+		struct mt792x_sta *msta;
+		u8 i;
+
+		rcu_read_lock();
+		sta = ieee80211_find_sta(vif, vif->cfg.ap_addr);
+		if (!sta) {
+			ret = -ENOENT;
+			rcu_read_unlock();
+			goto free;
+		}
+		msta = (struct mt792x_sta *)sta->drv_priv;
+		rcu_read_unlock();
+
+		for (i = 0; i < IEEE80211_MLD_MAX_NUM_LINKS; i++) {
+			if (!(BIT(i) & mvif->valid_links))
+				continue;
+			mconf = mt792x_vif_to_link(mvif, i);
+
+			if (mconf->link_id == msta->pri_link)
+				continue;
+			break;
+		}
+#if 0 //sean wang
+		mt7925_set_mlo_roc(phy, mconf);
+#endif
+
+#if 0 //sean wang
+		/* enable first link's bss */
+		ret = mt7925_mcu_add_bss_info(&dev->phy,
+					      mt792x_vif_to_bss_conf(vif, msta->pri_link),
+					      sta, true);
+		if (ret)
+			goto free;
+
+		/* enable secondary link's bss */
+		ret = mt7925_mcu_add_bss_info(&dev->phy,
+					      mt792x_vif_to_bss_conf(vif, mconf->link_id),
+					      sta, true);
+		if (ret)
+			goto free;
+#endif
+	}
+
+	mt792x_mutex_release(dev);
+
+	return 0;
+
+free:
+	for_each_set_bit(link_id, &add, IEEE80211_MLD_MAX_NUM_LINKS) {
+		rcu_assign_pointer(mvif->link_conf[link_id], NULL);
+		rcu_assign_pointer(mvif->sta.link[link_id], NULL);
+		if (mconf != &mvif->bss_conf)
+			devm_kfree(dev->mt76.dev, mconfs[link_id]);
+		if (mlink != &mvif->sta.deflink)
+			devm_kfree(dev->mt76.dev, mlinks[link_id]);
+	}
+	mt792x_mutex_release(dev);
+
+	return ret;
+}
+
 const struct ieee80211_ops mt7925_ops = {
 	.tx = mt792x_tx,
 	.start = mt7925_start,
@@ -1473,6 +1626,7 @@ const struct ieee80211_ops mt7925_ops = {
 	.mgd_complete_tx = mt7925_mgd_complete_tx,
 	.vif_cfg_changed = mt7925_vif_cfg_changed,
 	.link_info_changed = mt7925_link_info_changed,
+	.change_vif_links = mt7925_change_vif_links,
 };
 EXPORT_SYMBOL_GPL(mt7925_ops);
 
