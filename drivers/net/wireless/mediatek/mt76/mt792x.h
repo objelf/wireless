@@ -257,6 +257,14 @@ mt792x_sta_to_link(struct mt792x_sta *msta, u8 link_id)
 		lockdep_is_held(&msta->vif->phy->dev->mt76.mutex));
 }
 
+static inline struct mt792x_bss_conf *
+mt792x_link_conf_to_mconf(struct ieee80211_bss_conf *link_conf)
+{
+        struct ieee80211_vif *vif = link_conf->vif;
+        struct mt792x_vif *mvif = (struct mt792x_vif *)vif->drv_priv;
+
+        return mt792x_vif_to_link(mvif, link_conf->link_id);
+}
 
 static inline struct mt792x_dev *
 mt792x_hw_dev(struct ieee80211_hw *hw)
