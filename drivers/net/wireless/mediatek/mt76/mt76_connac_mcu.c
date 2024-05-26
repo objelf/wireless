@@ -370,7 +370,7 @@ EXPORT_SYMBOL_GPL(mt76_connac_mcu_bss_omac_tlv);
 
 void mt76_connac_mcu_sta_basic_tlv(struct mt76_dev *dev, struct sk_buff *skb,
 				   struct ieee80211_vif *vif,
-				   struct ieee80211_sta *sta,
+				   struct ieee80211_link_sta *link_sta,
 				   bool enable, bool newly)
 {
 	struct sta_rec_basic *basic;
@@ -390,7 +390,7 @@ void mt76_connac_mcu_sta_basic_tlv(struct mt76_dev *dev, struct sk_buff *skb,
 		basic->conn_state = CONN_STATE_DISCONNECT;
 	}
 
-	if (!sta) {
+	if (!link_sta) {
 		basic->conn_type = cpu_to_le32(CONNECTION_INFRA_BC);
 
 		if (vif->type == NL80211_IFTYPE_STATION &&
@@ -411,7 +411,7 @@ void mt76_connac_mcu_sta_basic_tlv(struct mt76_dev *dev, struct sk_buff *skb,
 		else
 			conn_type = CONNECTION_INFRA_STA;
 		basic->conn_type = cpu_to_le32(conn_type);
-		basic->aid = cpu_to_le16(sta->aid);
+		basic->aid = cpu_to_le16(link_sta->sta->aid);
 		break;
 	case NL80211_IFTYPE_STATION:
 		if (vif->p2p && !is_mt7921(dev))
@@ -423,15 +423,15 @@ void mt76_connac_mcu_sta_basic_tlv(struct mt76_dev *dev, struct sk_buff *skb,
 		break;
 	case NL80211_IFTYPE_ADHOC:
 		basic->conn_type = cpu_to_le32(CONNECTION_IBSS_ADHOC);
-		basic->aid = cpu_to_le16(sta->aid);
+		basic->aid = cpu_to_le16(link_sta->sta->aid);
 		break;
 	default:
 		WARN_ON(1);
 		break;
 	}
 
-	memcpy(basic->peer_addr, sta->addr, ETH_ALEN);
-	basic->qos = sta->wme;
+	memcpy(basic->peer_addr, link_sta->addr, ETH_ALEN);
+	basic->qos = link_sta->sta->wme;
 }
 EXPORT_SYMBOL_GPL(mt76_connac_mcu_sta_basic_tlv);
 
@@ -1054,8 +1054,9 @@ int mt76_connac_mcu_sta_cmd(struct mt76_phy *phy,
 		return PTR_ERR(skb);
 
 	if (info->sta || !info->offload_fw)
-		mt76_connac_mcu_sta_basic_tlv(dev, skb, info->vif, info->sta,
-					      info->enable, info->newly);
+		mt76_connac_mcu_sta_basic_tlv(dev, skb, info->vif,
+					      &info->sta->deflink, info->enable,
+					      info->newly);
 	if (info->sta && info->enable)
 		mt76_connac_mcu_sta_tlv(phy, skb, info->sta,
 					info->vif, info->rcpi,
