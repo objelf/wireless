@@ -1734,6 +1734,7 @@ enum mt76_sta_info_state {
 
 struct mt76_sta_cmd_info {
 	struct ieee80211_sta *sta;
+	struct ieee80211_link_sta *link_sta;
 	struct mt76_wcid *wcid;
 
 	struct ieee80211_vif *vif;
