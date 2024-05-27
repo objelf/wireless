@@ -195,7 +195,7 @@ int mt7925_run_firmware(struct mt792x_dev *dev);
 int mt7925_mcu_set_bss_pm(struct mt792x_dev *dev,
 			  struct ieee80211_bss_conf *link_conf,
 			  bool enable);
-int mt7925_mcu_sta_update(struct mt792x_dev *dev, struct ieee80211_sta *sta,
+int mt7925_mcu_sta_update(struct mt792x_dev *dev,
 			  struct ieee80211_link_sta *link_sta,
 			  struct ieee80211_vif *vif, bool enable,
 			  enum mt76_sta_info_state state);
