@@ -2028,16 +2028,17 @@ __mt7925_mcu_alloc_bss_req(struct mt76_dev *dev, struct mt76_vif *mvif, int len)
 
 static u8
 mt7925_get_phy_mode_ext(struct mt76_phy *phy, struct ieee80211_vif *vif,
-			enum nl80211_band band, struct ieee80211_sta *sta)
+			enum nl80211_band band,
+			struct ieee80211_link_sta *link_sta)
 {
 	struct ieee80211_he_6ghz_capa *he_6ghz_capa;
 	const struct ieee80211_sta_eht_cap *eht_cap;
 	__le16 capa = 0;
 	u8 mode = 0;
 
-	if (sta) {
-		he_6ghz_capa = &sta->deflink.he_6ghz_capa;
-		eht_cap = &sta->deflink.eht_cap;
+	if (link_sta) {
+		he_6ghz_capa = &link_sta->he_6ghz_capa;
+		eht_cap = &link_sta->eht_cap;
 	} else {
 		struct ieee80211_supported_band *sband;
 
@@ -2097,7 +2098,7 @@ mt7925_mcu_bss_basic_tlv(struct sk_buff *skb,
 	basic_req->hw_bss_idx = idx;
 
 	basic_req->phymode_ext = mt7925_get_phy_mode_ext(phy, vif, band,
-							 link_sta->sta);
+							 link_sta);
 
 	if (band == NL80211_BAND_2GHZ)
 		basic_req->nonht_basic_phy = cpu_to_le16(PHY_TYPE_ERP_INDEX);
