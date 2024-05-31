@@ -717,8 +717,6 @@ static int mt7925_mac_link_sta_add(struct mt76_dev *mdev,
 	if (idx < 0)
 		return -ENOSPC;
 
-	INIT_LIST_HEAD(&msta->deflink.wcid.poll_list);
-	msta->vif = mvif;
 	mlink->wcid.sta = 1;
 	mlink->wcid.idx = idx;
 	mlink->wcid.phy_idx = mvif->bss_conf.mt76.band_idx;
@@ -728,9 +726,6 @@ static int mt7925_mac_link_sta_add(struct mt76_dev *mdev,
 	ret = mt76_connac_pm_wake(&dev->mphy, &dev->pm);
 	if (ret)
 		return ret;
-
-	if (vif->type == NL80211_IFTYPE_STATION)
-		mvif->wep_sta = msta;
 
 	mt7925_mac_wtbl_update(dev, idx,
 			       MT_WTBL_UPDATE_ADM_COUNT_CLEAR);
@@ -755,6 +750,15 @@ static int mt7925_mac_link_sta_add(struct mt76_dev *mdev,
 int mt7925_mac_sta_add(struct mt76_dev *mdev, struct ieee80211_vif *vif,
 		       struct ieee80211_sta *sta)
 {
+	struct mt792x_vif *mvif = (struct mt792x_vif *)vif->drv_priv;
+	struct mt792x_sta *msta = (struct mt792x_sta *)sta->drv_priv;
+
+	msta->vif = mvif;
+	INIT_LIST_HEAD(&msta->deflink.wcid.poll_list);
+
+	if (vif->type == NL80211_IFTYPE_STATION)
+		mvif->wep_sta = msta;
+
 	return mt7925_mac_link_sta_add(mdev, vif, &sta->deflink);
 }
 EXPORT_SYMBOL_GPL(mt7925_mac_sta_add);
