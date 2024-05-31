@@ -825,16 +825,12 @@ static void mt7925_mac_link_sta_remove(struct mt76_dev *mdev,
 
 	link_conf = mt792x_vif_to_bss_conf(vif, -1);
 
-	if (vif->type == NL80211_IFTYPE_STATION) {
+	if (vif->type == NL80211_IFTYPE_STATION && !link_sta->sta->tdls) {
 		struct mt792x_vif *mvif = (struct mt792x_vif *)vif->drv_priv;
-
-		mvif->wep_sta = NULL;
-		ewma_rssi_init(&mvif->bss_conf.rssi);
-		if (!link_sta->sta->tdls)
-			mt7925_mcu_add_bss_info(&dev->phy,
-						mvif->bss_conf.mt76.ctx,
-						vif, link_conf, link_sta,
-						false);
+		mt7925_mcu_add_bss_info(&dev->phy,
+					mvif->bss_conf.mt76.ctx,
+					vif, link_conf, link_sta,
+					false);
 	}
 
 	spin_lock_bh(&mdev->sta_poll_lock);
@@ -851,6 +847,13 @@ void mt7925_mac_sta_remove(struct mt76_dev *mdev, struct ieee80211_vif *vif,
 			   struct ieee80211_sta *sta)
 {
 	mt7925_mac_link_sta_remove(mdev, vif, &sta->deflink);
+
+	if (vif->type == NL80211_IFTYPE_STATION) {
+		struct mt792x_vif *mvif = (struct mt792x_vif *)vif->drv_priv;
+
+		mvif->wep_sta = NULL;
+		ewma_rssi_init(&mvif->bss_conf.rssi);
+	}
 }
 EXPORT_SYMBOL_GPL(mt7925_mac_sta_remove);
 
