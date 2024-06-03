@@ -1447,6 +1447,9 @@ static void mt7925_vif_cfg_changed(struct ieee80211_hw *hw,
 		mt7925_mcu_update_arp_filter(&dev->mt76, &mvif->bss_conf.mt76);
 	}
 
+	if (changed & BSS_CHANGED_PS)
+		mt7925_mcu_uni_bss_ps(dev, vif);
+
 	mt792x_mutex_release(dev);
 }
 
@@ -1490,9 +1493,6 @@ static void mt7925_link_info_changed(struct ieee80211_hw *hw,
 	/* ensure that enable txcmd_mode after bss_info */
 	if (changed & (BSS_CHANGED_QOS | BSS_CHANGED_BEACON_ENABLED))
 		mt7925_mcu_set_tx(dev, info);
-
-	if (changed & BSS_CHANGED_PS)
-		mt7925_mcu_uni_bss_ps(dev, vif);
 
 	mt792x_mutex_release(dev);
 }
