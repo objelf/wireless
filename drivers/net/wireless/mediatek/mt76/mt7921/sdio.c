@@ -19,6 +19,8 @@
 static const struct sdio_device_id mt7921s_table[] = {
 	{ SDIO_DEVICE(SDIO_VENDOR_ID_MEDIATEK, 0x7901),
 		.driver_data = (kernel_ulong_t)MT7921_FIRMWARE_WM },
+	{ SDIO_DEVICE(SDIO_VENDOR_ID_MEDIATEK, 0x7902),
+		.driver_data = (kernel_ulong_t)MT7902_FIRMWARE_WM },
 	{ }	/* Terminating entry */
 };
 
@@ -154,7 +156,7 @@ static int mt7921s_probe(struct sdio_func *func,
 
 	mdev->rev = (mt76_rr(dev, MT_HW_CHIPID) << 16) |
 		    (mt76_rr(dev, MT_HW_REV) & 0xff);
-	dev_dbg(mdev->dev, "ASIC revision: %04x\n", mdev->rev);
+	dev_err(mdev->dev, "ASIC revision: %04x\n", mdev->rev);
 
 	mdev->sdio.parse_irq = mt7921s_parse_intr;
 	mdev->sdio.intr_data = devm_kmalloc(mdev->dev,
@@ -317,6 +319,8 @@ failed:
 MODULE_DEVICE_TABLE(sdio, mt7921s_table);
 MODULE_FIRMWARE(MT7921_FIRMWARE_WM);
 MODULE_FIRMWARE(MT7921_ROM_PATCH);
+MODULE_FIRMWARE(MT7902_FIRMWARE_WM);
+MODULE_FIRMWARE(MT7902_ROM_PATCH);
 
 static DEFINE_SIMPLE_DEV_PM_OPS(mt7921s_pm_ops, mt7921s_suspend, mt7921s_resume);
 
