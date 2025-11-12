@@ -151,7 +151,7 @@ void mt792x_stop(struct ieee80211_hw *hw, bool suspend)
 	cancel_work_sync(&dev->reset_work);
 	mt76_connac_free_pending_tx_skbs(&dev->pm, NULL);
 
-	if (is_mt7921(&dev->mt76)) {
+	if (is_connac2(&dev->mt76)) {
 		mt792x_mutex_acquire(dev);
 		mt76_connac_mcu_set_mac_enable(&dev->mt76, 0, false, false);
 		mt792x_mutex_release(dev);
@@ -690,9 +690,7 @@ int mt792x_init_wiphy(struct ieee80211_hw *hw)
 	ieee80211_hw_set(hw, CONNECTION_MONITOR);
 	ieee80211_hw_set(hw, SUPPORTS_MULTI_BSSID);
 	ieee80211_hw_set(hw, SUPPORTS_ONLY_HE_MULTI_BSSID);
-
 	ieee80211_hw_set(hw, CHANCTX_STA_CSA);
-
 
 	if (dev->pm.enable)
 		ieee80211_hw_set(hw, CONNECTION_MONITOR);
