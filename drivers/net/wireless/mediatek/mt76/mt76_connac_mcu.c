@@ -2242,6 +2242,9 @@ mt76_connac_mcu_rate_txpower_band(struct mt76_phy *phy,
 					    false);
 		if (err < 0)
 			goto out;
+
+		/* read a CR to avoid PSE buffer underflow */
+		mt76_connac_mcu_reg_rr(dev, 0x820C8000);
 	}
 
 out:
@@ -2252,9 +2255,6 @@ out:
 int mt76_connac_mcu_set_rate_txpower(struct mt76_phy *phy)
 {
 	int err;
-
-	if (is_mt7902(phy->dev))
-		return 0;
 
 	if (phy->cap.has_2ghz) {
 		err = mt76_connac_mcu_rate_txpower_band(phy,
