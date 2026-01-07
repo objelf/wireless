@@ -165,6 +165,23 @@ ieee80211_nan_find_existing_channel(struct ieee80211_nan_channel *channels,
 	return -ENOENT;
 }
 
+static void
+ieee80211_nan_update_all_ndi_carriers(struct ieee80211_local *local)
+{
+	struct ieee80211_sub_if_data *sdata;
+
+	lockdep_assert_wiphy(local->hw.wiphy);
+
+	/* Iterate all interfaces and update carrier for NDI interfaces */
+	list_for_each_entry(sdata, &local->interfaces, list) {
+		if (!ieee80211_sdata_running(sdata) ||
+		    sdata->vif.type != NL80211_IFTYPE_NAN_DATA)
+			continue;
+
+		ieee80211_nan_update_ndi_carrier(sdata);
+	}
+}
+
 int ieee80211_nan_set_local_sched(struct ieee80211_sub_if_data *sdata,
 				  struct cfg80211_nan_local_sched *sched)
 {
@@ -244,6 +261,8 @@ int ieee80211_nan_set_local_sched(struct ieee80211_sub_if_data *sdata,
 
 	drv_vif_cfg_changed(sdata->local, sdata, BSS_CHANGED_NAN_LOCAL_SCHED);
 
+	ieee80211_nan_update_all_ndi_carriers(sdata->local);
+
 	return 0;
 err:
 	/* Remove newly added channels */
@@ -302,6 +321,7 @@ err:
 	}
 
 	drv_vif_cfg_changed(sdata->local, sdata, BSS_CHANGED_NAN_LOCAL_SCHED);
+	ieee80211_nan_update_all_ndi_carriers(sdata->local);
 	return ret;
 }
 
@@ -375,6 +395,91 @@ ieee80211_nan_init_peer_map(struct ieee80211_nan_peer_sched *peer_sched,
 	}
 }
 
+/*
+ * Check if the local schedule and a peer schedule have at least one common
+ * slot - a slot where both schedules are active on compatible channels.
+ */
+static bool
+ieee80211_nan_has_common_slots(struct ieee80211_sub_if_data *sdata,
+			       struct ieee80211_nan_peer_sched *peer_sched)
+{
+	for (int slot = 0; slot < CFG80211_NAN_SCHED_NUM_TIME_SLOTS; slot++) {
+		struct ieee80211_nan_channel *local_chan =
+			sdata->vif.cfg.nan_schedule[slot];
+
+		if (!local_chan || !local_chan->chanctx_conf)
+			continue;
+
+		/* Check all peer maps for this slot */
+		for (int m = 0; m < CFG80211_NAN_MAX_PEER_MAPS; m++) {
+			struct ieee80211_nan_peer_map *map = &peer_sched->maps[m];
+			struct ieee80211_nan_channel *peer_chan;
+
+			if (map->map_id == CFG80211_NAN_INVALID_MAP_ID)
+				continue;
+
+			peer_chan = map->slots[slot];
+			if (!peer_chan)
+				continue;
+
+			if (local_chan->chanctx_conf == peer_chan->chanctx_conf)
+				return true;
+		}
+	}
+
+	return false;
+}
+
+void ieee80211_nan_update_ndi_carrier(struct ieee80211_sub_if_data *ndi_sdata)
+{
+	struct ieee80211_local *local = ndi_sdata->local;
+	struct ieee80211_sub_if_data *nmi_sdata;
+	struct sta_info *sta;
+
+	lockdep_assert_wiphy(local->hw.wiphy);
+
+	if (WARN_ON(ndi_sdata->vif.type != NL80211_IFTYPE_NAN_DATA ||
+		    !ndi_sdata->dev) || !ieee80211_sdata_running(ndi_sdata))
+		return;
+
+	nmi_sdata = wiphy_dereference(local->hw.wiphy, ndi_sdata->u.nan_data.nmi);
+	if (WARN_ON(!nmi_sdata))
+		return;
+
+	list_for_each_entry(sta, &local->sta_list, list) {
+		struct ieee80211_sta *nmi_sta;
+
+		if (sta->sdata != ndi_sdata ||
+		    !test_sta_flag(sta, WLAN_STA_AUTHORIZED))
+			continue;
+
+		nmi_sta = wiphy_dereference(local->hw.wiphy, sta->sta.nmi);
+		if (WARN_ON(!nmi_sta) || !nmi_sta->nan_sched)
+			continue;
+
+		if (ieee80211_nan_has_common_slots(nmi_sdata, nmi_sta->nan_sched)) {
+			netif_carrier_on(ndi_sdata->dev);
+			return;
+		}
+	}
+
+	netif_carrier_off(ndi_sdata->dev);
+}
+
+static void
+ieee80211_nan_update_peer_ndis_carrier(struct ieee80211_local *local,
+				       struct sta_info *nmi_sta)
+{
+	struct sta_info *sta;
+
+	lockdep_assert_wiphy(local->hw.wiphy);
+
+	list_for_each_entry(sta, &local->sta_list, list) {
+		if (rcu_access_pointer(sta->sta.nmi) == &nmi_sta->sta)
+			ieee80211_nan_update_ndi_carrier(sta->sdata);
+	}
+}
+
 int ieee80211_nan_set_peer_sched(struct ieee80211_sub_if_data *sdata,
 				 struct cfg80211_nan_peer_sched *sched)
 {
@@ -435,6 +540,8 @@ int ieee80211_nan_set_peer_sched(struct ieee80211_sub_if_data *sdata,
 		sta->sta.nan_sched = old_sched;
 		goto out;
 	}
+
+	ieee80211_nan_update_peer_ndis_carrier(sdata->local, sta);
 
 	/* Success - free old schedule */
 	to_free = old_sched;
