@@ -249,14 +249,6 @@ static inline void hwsim_clear_magic(struct ieee80211_vif *vif)
 	vp->magic = 0;
 }
 
-struct hwsim_sta_priv {
-	u32 magic;
-	unsigned int last_link;
-	u16 active_links_rx;
-};
-
-#define HWSIM_STA_MAGIC	0x6d537749
-
 static inline void hwsim_check_sta_magic(struct ieee80211_sta *sta)
 {
 	struct hwsim_sta_priv *sp = (void *)sta->drv_priv;
@@ -2477,6 +2469,9 @@ static void mac80211_hwsim_vif_info_changed(struct ieee80211_hw *hw,
 		vp->aid = vif->cfg.aid;
 	}
 
+	if (changed & BSS_CHANGED_NAN_LOCAL_SCHED)
+		mac80211_hwsim_nan_local_sched_changed(hw, vif);
+
 	if (vif->type == NL80211_IFTYPE_STATION &&
 	    changed & (BSS_CHANGED_MLD_VALID_LINKS | BSS_CHANGED_MLD_TTLM)) {
 		u16 usable_links = ieee80211_vif_usable_links(vif);
@@ -2642,6 +2637,8 @@ static int mac80211_hwsim_sta_add(struct ieee80211_hw *hw,
 		     sta->valid_links);
 		sp->active_links_rx = sta->valid_links;
 	}
+
+	spin_lock_init(&sp->nan_sched.lock);
 
 	return 0;
 }
@@ -3919,34 +3916,35 @@ out:
 #define HWSIM_DEBUGFS_OPS
 #endif
 
-#define HWSIM_COMMON_OPS					\
-	.tx = mac80211_hwsim_tx,				\
-	.wake_tx_queue = ieee80211_hwsim_wake_tx_queue,		\
-	.start = mac80211_hwsim_start,				\
-	.stop = mac80211_hwsim_stop,				\
-	.add_interface = mac80211_hwsim_add_interface,		\
-	.change_interface = mac80211_hwsim_change_interface,	\
-	.remove_interface = mac80211_hwsim_remove_interface,	\
-	.config = mac80211_hwsim_config,			\
-	.configure_filter = mac80211_hwsim_configure_filter,	\
-	.vif_cfg_changed = mac80211_hwsim_vif_info_changed,	\
-	.link_info_changed = mac80211_hwsim_link_info_changed,  \
-	.tx_last_beacon = mac80211_hwsim_tx_last_beacon,	\
-	.sta_notify = mac80211_hwsim_sta_notify,		\
-	.link_sta_rc_update = mac80211_hwsim_sta_rc_update,	\
-	.conf_tx = mac80211_hwsim_conf_tx,			\
-	.get_survey = mac80211_hwsim_get_survey,		\
-	CFG80211_TESTMODE_CMD(mac80211_hwsim_testmode_cmd)	\
-	.ampdu_action = mac80211_hwsim_ampdu_action,		\
-	.flush = mac80211_hwsim_flush,				\
-	.get_et_sset_count = mac80211_hwsim_get_et_sset_count,	\
-	.get_et_stats = mac80211_hwsim_get_et_stats,		\
-	.get_et_strings = mac80211_hwsim_get_et_strings,	\
-	.start_pmsr = mac80211_hwsim_start_pmsr,		\
-	.abort_pmsr = mac80211_hwsim_abort_pmsr,		\
-	.start_nan = mac80211_hwsim_nan_start,			\
-	.stop_nan = mac80211_hwsim_nan_stop,			\
-	.nan_change_conf = mac80211_hwsim_nan_change_config,	\
+#define HWSIM_COMMON_OPS						 \
+	.tx = mac80211_hwsim_tx,					 \
+	.wake_tx_queue = ieee80211_hwsim_wake_tx_queue,			 \
+	.start = mac80211_hwsim_start,					 \
+	.stop = mac80211_hwsim_stop,					 \
+	.add_interface = mac80211_hwsim_add_interface,			 \
+	.change_interface = mac80211_hwsim_change_interface,		 \
+	.remove_interface = mac80211_hwsim_remove_interface,		 \
+	.config = mac80211_hwsim_config,				 \
+	.configure_filter = mac80211_hwsim_configure_filter,		 \
+	.vif_cfg_changed = mac80211_hwsim_vif_info_changed,		 \
+	.link_info_changed = mac80211_hwsim_link_info_changed,		 \
+	.tx_last_beacon = mac80211_hwsim_tx_last_beacon,		 \
+	.sta_notify = mac80211_hwsim_sta_notify,			 \
+	.link_sta_rc_update = mac80211_hwsim_sta_rc_update,		 \
+	.conf_tx = mac80211_hwsim_conf_tx,				 \
+	.get_survey = mac80211_hwsim_get_survey,			 \
+	CFG80211_TESTMODE_CMD(mac80211_hwsim_testmode_cmd)		 \
+	.ampdu_action = mac80211_hwsim_ampdu_action,			 \
+	.flush = mac80211_hwsim_flush,					 \
+	.get_et_sset_count = mac80211_hwsim_get_et_sset_count,		 \
+	.get_et_stats = mac80211_hwsim_get_et_stats,			 \
+	.get_et_strings = mac80211_hwsim_get_et_strings,		 \
+	.start_pmsr = mac80211_hwsim_start_pmsr,			 \
+	.abort_pmsr = mac80211_hwsim_abort_pmsr,			 \
+	.start_nan = mac80211_hwsim_nan_start,				 \
+	.stop_nan = mac80211_hwsim_nan_stop,				 \
+	.nan_change_conf = mac80211_hwsim_nan_change_config,		 \
+	.nan_peer_sched_changed = mac80211_hwsim_nan_peer_sched_changed, \
 	HWSIM_DEBUGFS_OPS
 
 #define HWSIM_NON_MLO_OPS					\
