@@ -886,6 +886,10 @@ static void ieee80211_teardown_sdata(struct ieee80211_sub_if_data *sdata)
 
 	ieee80211_vif_clear_links(sdata);
 	ieee80211_link_stop(&sdata->deflink);
+
+	if (sdata->vif.type == NL80211_IFTYPE_NAN)
+		for (int i = 0; i < ARRAY_SIZE(sdata->vif.cfg.nan_channels); i++)
+			WARN_ON(sdata->vif.cfg.nan_channels[i].chanreq.oper.chan);
 }
 
 static void ieee80211_uninit(struct net_device *dev)
