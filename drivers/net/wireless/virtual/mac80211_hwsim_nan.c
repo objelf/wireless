@@ -487,13 +487,10 @@ void mac80211_hwsim_nan_rx(struct ieee80211_hw *hw,
 
 	spin_unlock_bh(&data->nan.state_lock);
 
-	if (joined_cluster) {
-		struct wireless_dev *wdev =
-			ieee80211_vif_to_wdev(data->nan.device_vif);
-
-		cfg80211_nan_cluster_joined(wdev, data->nan.cluster_id, false,
-					    GFP_ATOMIC);
-	}
+	if (joined_cluster)
+		ieee80211_nan_cluster_joined(data->nan.device_vif,
+					     data->nan.cluster_id, false,
+					     GFP_ATOMIC);
 }
 
 static void
@@ -573,13 +570,10 @@ mac80211_hwsim_nan_exec_state_transitions(struct mac80211_hwsim_data *data)
 
 	spin_unlock(&data->nan.state_lock);
 
-	if (notify_join) {
-		struct wireless_dev *wdev =
-			ieee80211_vif_to_wdev(data->nan.device_vif);
-
-		cfg80211_nan_cluster_joined(wdev, data->nan.cluster_id, true,
-					    GFP_ATOMIC);
-	}
+	if (notify_join)
+		ieee80211_nan_cluster_joined(data->nan.device_vif,
+					     data->nan.cluster_id, true,
+					     GFP_ATOMIC);
 }
 
 static void
