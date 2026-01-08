@@ -16521,7 +16521,7 @@ static int nl80211_nan_set_local_sched(struct sk_buff *skb,
 		}
 	}
 
-	return rdev_nan_set_local_sched(rdev, wdev, sched);
+	return cfg80211_nan_set_local_schedule(rdev, wdev, sched);
 }
 
 static int nl80211_get_protocol_features(struct sk_buff *skb,

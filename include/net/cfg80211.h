@@ -6900,6 +6900,8 @@ struct wireless_dev {
 		} ocb;
 		struct {
 			u8 cluster_id[ETH_ALEN] __aligned(2);
+			u8 n_channels;
+			struct cfg80211_chan_def *chandefs;
 		} nan;
 	} u;
 
