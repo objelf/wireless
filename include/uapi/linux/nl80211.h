@@ -2657,7 +2657,8 @@ enum nl80211_commands {
  *      a flow is assigned on each round of the DRR scheduler.
  * @NL80211_ATTR_HE_CAPABILITY: HE Capability information element (from
  *	association request when used with NL80211_CMD_NEW_STATION). Can be set
- *	only if %NL80211_STA_FLAG_WME is set.
+ *	only if %NL80211_STA_FLAG_WME is set (except for NAN, which uses WME
+ *	anyway).
  *
  * @NL80211_ATTR_FTM_RESPONDER: nested attribute which user-space can include
  *	in %NL80211_CMD_START_AP or %NL80211_CMD_SET_BEACON for fine timing
@@ -3016,6 +3017,9 @@ enum nl80211_commands {
  *	the attributes of this type.
  *	Each slots spans over 16TUs, hence the entire schedule spans over
  *	512TUs. Other slot durations and periods are currently not supported.
+ * @NL80211_ATTR_NAN_NMI_MAC: The address of the NMI station to which this NDI
+ *	station belongs. Used with %NL80211_CMD_NEW_STATION when adding an NDI
+ *	station.
  *
  * @NUM_NL80211_ATTR: total number of nl80211_attrs available
  * @NL80211_ATTR_MAX: highest attribute number currently defined
@@ -3594,6 +3598,8 @@ enum nl80211_attrs {
 	NL80211_ATTR_NAN_CHANNEL_ENTRY,
 	NL80211_ATTR_NAN_TIME_SLOTS,
 	NL80211_ATTR_NAN_RX_NSS,
+
+	NL80211_ATTR_NAN_NMI_MAC,
 
 	/* add attributes here, update the policy in nl80211.c */
 
