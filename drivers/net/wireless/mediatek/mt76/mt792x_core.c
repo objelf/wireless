@@ -920,23 +920,51 @@ int mt792xe_mcu_fw_pmctrl(struct mt792x_dev *dev)
 }
 EXPORT_SYMBOL_GPL(mt792xe_mcu_fw_pmctrl);
 
+bool mt76_poll_msec_sean(struct mt76_dev *dev, u32 offset, u32 mask, u32 val,
+			int timeout, int tick)
+{
+	u32 cur;
+
+	timeout /= tick;
+	do {
+		cur = __mt76_rr(dev, offset) & mask;
+		pr_err("%s %d val=%x\n", __func__, __LINE__, cur);
+		if (cur == val)
+			return true;
+
+		usleep_range(1000 * tick, 2000 * tick);
+	} while (timeout-- > 0);
+
+	return false;
+}
+
+static int mt792x_firmware_state(struct mt792x_dev *dev, bool wa)
+{
+       u32 state = FIELD_PREP(MT_TOP_MISC_FW_STATE,
+                              wa ? FW_STATE_RDY : FW_STATE_FW_DOWNLOAD);
+
+       if (!mt76_poll_msec_sean(&dev->mt76, MT_TOP_MISC, MT_TOP_MISC_FW_STATE,
+                           state, 1000, 10)) {
+               dev_err(dev->mt76.dev, "Timeout for initializing firmware\n");
+               return -EIO;
+       }
+       return 0;
+}
+
 int mt792x_load_firmware(struct mt792x_dev *dev)
 {
 	int ret;
 
-	/* Release semaphore if taken by previous failed load attempt.
-	 * This prevents "Failed to get patch semaphore" errors when
-	 * recovering from firmware crashes or suspend/resume failures.
-	 */
-	ret = mt76_connac_mcu_patch_sem_ctrl(&dev->mt76, false);
-	if (ret < 0)
-		dev_dbg(dev->mt76.dev, "Semaphore release returned %d (may be expected)\n", ret);
+       dev_info(dev->mt76.dev, "Loading firmware patch: %s\n", mt792x_patch_name(dev));
 
-	/* Always restart MCU to ensure clean state before loading firmware */
-	mt76_connac_mcu_restart(&dev->mt76);
-
-	/* Wait for MCU to be ready after restart */
-	msleep(100);
+       mt76_connac_mcu_restart(&dev->mt76);
+       ret = mt792x_firmware_state(dev, false);
+       if (ret)
+	       dev_warn(dev->mt76.dev,
+		       "Firmware is not ready for download\n");
+	else
+	dev_info(dev->mt76.dev,
+		       "Firmware is ready for download\n");
 
 	ret = mt76_connac2_load_patch(&dev->mt76, mt792x_patch_name(dev));
 	if (ret)

@@ -276,7 +276,7 @@ static int mt7921_start(struct ieee80211_hw *hw)
 	mt792x_mutex_acquire(phy->dev);
 	err = __mt7921_start(phy);
 	mt792x_mutex_release(phy->dev);
-
+pr_err("%s %d\n", __func__, __LINE__);
 	return err;
 }
 
@@ -292,6 +292,8 @@ static void mt7921_stop(struct ieee80211_hw *hw, bool suspend)
 		if (err)
 			return;
 	}
+
+pr_err("%s %d\n", __func__, __LINE__);
 
 	mt792x_stop(hw, false);
 }
