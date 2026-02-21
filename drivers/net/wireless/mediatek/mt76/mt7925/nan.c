@@ -344,11 +344,18 @@ mt7925_nan_mcu_handle_de_event(struct mt792x_dev *dev, struct tlv *tlv)
 	if (de_evt->event_type != NAN_EVENT_ID_JOINED_CLUSTER)
 		return;
 
+	if (!ieee80211_vif_nan_started(dev->nan_vif)) {
+		dev_warn(dev->mt76.dev, "nan: joined-cluster event but NAN not started\n");
+		return;
+	}
+
 	dev_dbg(dev->mt76.dev, "nan: anchor_master_rank=%*phN\n",
 		NAN_ANCHOR_MASTER_RANK_NUM, de_evt->anchor_master_rank);
 
 	dev_dbg(dev->mt76.dev, "nan: own_nmi=%pM master_nmi=%pM\n",
 		de_evt->own_nmi, de_evt->master_nmi);
+
+	ieee80211_nan_cluster_joined(dev->nan_vif, cluster_id, true, GFP_KERNEL);
 }
 
 void mt7925_nan_mcu_event(struct mt792x_dev *dev, struct sk_buff *skb)
