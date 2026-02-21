@@ -11,6 +11,7 @@
 #include "regd.h"
 #include "mcu.h"
 #include "mac.h"
+#include "nan.h"
 
 static void
 mt7925_init_he_caps(struct mt792x_phy *phy, enum nl80211_band band,
@@ -474,6 +475,8 @@ mt7925_add_interface(struct ieee80211_hw *hw, struct ieee80211_vif *vif)
 	INIT_WORK(&mvif->csa_work, mt7925_csa_work);
 	timer_setup(&mvif->csa_timer, mt792x_csa_timer, 0);
 
+	if (vif->type == NL80211_IFTYPE_NAN)
+		dev->nan_vif = vif;
 out:
 	mt792x_mutex_release(dev);
 
@@ -2472,6 +2475,69 @@ static void mt7925_channel_switch_rx_beacon(struct ieee80211_hw *hw,
 	}
 }
 
+static int mt7925_start_nan(struct ieee80211_hw *hw,
+			    struct ieee80211_vif *vif,
+			    struct cfg80211_nan_conf *conf)
+{
+	struct mt792x_dev *dev = mt792x_hw_dev(hw);
+	struct ieee80211_bss_conf *link_conf = &vif->bss_conf;
+	int err = 0;
+
+	mt792x_mutex_acquire(dev);
+
+	link_conf->chanreq.oper.chan = conf->band_cfgs[NL80211_BAND_2GHZ].chan;
+
+	err = mt7925_mcu_add_bss_info(&dev->phy, NULL, link_conf,
+				      NULL, true);
+	if (err < 0)
+		goto out;
+
+	err = mt7925_nan_enable(vif, dev, conf);
+
+out:
+	mt792x_mutex_release(dev);
+
+	return err;
+}
+
+static int mt7925_stop_nan(struct ieee80211_hw *hw,
+			   struct ieee80211_vif *vif)
+{
+	struct ieee80211_bss_conf *link_conf = &vif->bss_conf;
+	struct mt792x_dev *dev = mt792x_hw_dev(hw);
+	int err = 0;
+
+	mt792x_mutex_acquire(dev);
+
+	err = mt7925_nan_disable(vif, dev);
+	if (err < 0)
+		goto out;
+
+	err = mt7925_mcu_add_bss_info(&dev->phy, NULL, link_conf,
+				      NULL, false);
+out:
+	mt792x_mutex_release(dev);
+
+	return err;
+}
+
+static int mt7925_nan_change_conf(struct ieee80211_hw *hw,
+				  struct ieee80211_vif *vif,
+				  struct cfg80211_nan_conf *conf,
+				  u32 changes)
+{
+	struct mt792x_dev *dev = mt792x_hw_dev(hw);
+	int err = 0;
+
+	mt792x_mutex_acquire(dev);
+
+	err = mt7925_nan_change_configure(vif, dev, conf);
+
+	mt792x_mutex_release(dev);
+
+	return err;
+}
+
 const struct ieee80211_ops mt7925_ops = {
 	.tx = mt792x_tx,
 	.start = mt7925_start,
@@ -2541,6 +2607,9 @@ const struct ieee80211_ops mt7925_ops = {
 	.channel_switch = mt7925_channel_switch,
 	.abort_channel_switch = mt7925_abort_channel_switch,
 	.channel_switch_rx_beacon = mt7925_channel_switch_rx_beacon,
+	.start_nan = mt7925_start_nan,
+	.stop_nan = mt7925_stop_nan,
+	.nan_change_conf = mt7925_nan_change_conf,
 };
 EXPORT_SYMBOL_GPL(mt7925_ops);
 

@@ -283,6 +283,8 @@ struct mt792x_dev {
 	u32 backup_l2;
 
 	struct ieee80211_chanctx_conf *new_ctx;
+
+	struct ieee80211_vif *nan_vif;
 };
 
 static inline struct mt792x_bss_conf *
