@@ -7,6 +7,7 @@
 #include "regd.h"
 #include "mcu.h"
 #include "mac.h"
+#include "nan.h"
 
 #define MT_STA_BFER			BIT(0)
 #define MT_STA_BFEE			BIT(1)
@@ -37,7 +38,8 @@ int mt7925_mcu_parse_response(struct mt76_dev *mdev, int cmd,
 		   cmd == MCU_UNI_CMD(BSS_INFO_UPDATE) ||
 		   cmd == MCU_UNI_CMD(STA_REC_UPDATE) ||
 		   cmd == MCU_UNI_CMD(OFFLOAD) ||
-		   cmd == MCU_UNI_CMD(SUSPEND)) {
+		   cmd == MCU_UNI_CMD(SUSPEND) ||
+		   cmd == MCU_UNI_CMD(NAN)) {
 		struct mt7925_mcu_uni_event *event;
 
 		skb_pull(skb, sizeof(*rxd));
@@ -631,6 +633,8 @@ mt7925_mcu_uni_rx_unsolicited_event(struct mt792x_dev *dev,
 		dev->fw_assert = true;
 		mt76_connac_mcu_coredump_event(&dev->mt76, skb, &dev->coredump);
 		return;
+	case MCU_UNI_EVENT_NAN:
+		mt7925_nan_mcu_event(dev, skb);
 	default:
 		break;
 	}
