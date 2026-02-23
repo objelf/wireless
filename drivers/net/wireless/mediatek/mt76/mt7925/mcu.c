@@ -2452,11 +2452,8 @@ mt7925_get_phy_mode_ext(struct mt76_phy *phy, struct ieee80211_vif *vif,
 		struct ieee80211_supported_band *sband;
 
 		sband = phy->hw->wiphy->bands[band];
-
-		if (vif->type != NL80211_IFTYPE_NAN) {
-			capa = ieee80211_get_he_6ghz_capa(sband, vif->type);
-			he_6ghz_capa = (struct ieee80211_he_6ghz_capa *)&capa;
-		}
+		capa = ieee80211_get_he_6ghz_capa(sband, vif->type);
+		he_6ghz_capa = (struct ieee80211_he_6ghz_capa *)&capa;
 
 		eht_cap = ieee80211_get_eht_iftype_cap(sband, vif->type);
 	}
