@@ -1919,10 +1919,11 @@ mt7925_mcu_sta_eht_mld_tlv(struct sk_buff *skb,
 static void
 mt7925_mcu_sta_mld_tlv(struct sk_buff *skb,
 		       struct ieee80211_vif *vif,
-		       struct ieee80211_sta *sta,
+		       struct ieee80211_link_sta *link_sta,
 		       struct mt792x_bss_conf *mconf,
 		       struct mt792x_link_sta *mlink)
 {
+	struct ieee80211_sta *sta = link_sta->sta;
 	struct mt792x_vif *mvif = (struct mt792x_vif *)vif->drv_priv;
 	struct mt792x_sta *msta = (struct mt792x_sta *)sta->drv_priv;
 		struct mt792x_dev *dev = mvif->phy->dev;
@@ -1957,6 +1958,13 @@ mt7925_mcu_sta_mld_tlv(struct sk_buff *skb,
 	mld->link[cnt].wlan_id = cpu_to_le16(msta->deflink.wcid.idx);
 	mld->link[cnt++].bss_idx = mconf_pri->mt76.idx;
 
+	if (mlink == &msta->deflink)
+		dev_info_ratelimited(dev->mt76.dev,
+				     "mt7925: MLD_TLV primary sta=%pM link_id=%u link_addr=%pM wcid_idx=%d bss_idx=%d\n",
+				     sta->addr, link_sta->link_id,
+				     link_sta->addr, msta->deflink.wcid.idx,
+				     mconf_pri->mt76.idx);
+
 	/* Optionally encode the currently-updated secondary link. */
 	if (mlink && mlink != &msta->deflink && mconf) {
 		mld->secondary_id = cpu_to_le16(mlink->wcid.idx);
@@ -1964,11 +1972,10 @@ mt7925_mcu_sta_mld_tlv(struct sk_buff *skb,
 		mld->link[cnt++].bss_idx = mconf->mt76.idx;
 
 		dev_info_ratelimited(dev->mt76.dev,
-			"mt7925: MLD_TLV_LINK add secondary sta=%pM "
-			"sec_wcid=%d sec_bss_idx=%d\n",
-			sta->addr,
-			mlink->wcid.idx,
-			mconf->mt76.idx);
+				     "mt7925: MLD_TLV secondary sta=%pM link_id=%u link_addr=%pM wcid=%d bss=%d\n",
+				     sta->addr, link_sta->link_id,
+				     link_sta->addr, mlink->wcid.idx,
+				     mconf->mt76.idx);
 	}
 
 	mld->link_num = cnt;
@@ -2031,7 +2038,7 @@ mt7925_mcu_sta_cmd(struct mt76_phy *phy,
 
 		if (info->state != MT76_STA_INFO_STATE_NONE) {
 			mt7925_mcu_sta_mld_tlv(skb, info->vif,
-					       info->link_sta->sta,
+					       info->link_sta,
 					       mconf, mlink);
 
 			mt7925_mcu_sta_eht_mld_tlv(skb, info->vif, info->link_sta->sta);
