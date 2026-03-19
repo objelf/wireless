@@ -116,14 +116,14 @@ static const struct ieee80211_iface_combination if_comb_chanctx_nan[] = {
 	{
 		.limits = if_limits_nan_mcc,
 		.n_limits = ARRAY_SIZE(if_limits_nan_mcc),
-		.max_interfaces = 3,
+		.max_interfaces = MT792x_MAX_INTERFACES,
 		.num_different_channels = 2,
 		.beacon_int_infra_match = false,
 	},
 	{
 		.limits = if_limits_nan_scc,
 		.n_limits = ARRAY_SIZE(if_limits_nan_scc),
-		.max_interfaces = 4,
+		.max_interfaces = MT792x_MAX_INTERFACES,
 		.num_different_channels = 1,
 		.beacon_int_infra_match = false,
 	},
@@ -803,6 +803,7 @@ int mt792x_init_wiphy(struct ieee80211_hw *hw)
 		wiphy->nan_capa.max_channel_switch_time = 12;
 		wiphy->nan_capa.dev_capabilities = NAN_DEV_CAPA_EXT_KEY_ID_SUPPORTED |
 						   NAN_DEV_CAPA_NDPE_SUPPORTED;
+		wiphy_ext_feature_set(wiphy, NL80211_EXT_FEATURE_SECURE_NAN);
 	}
 
 	wiphy->max_remain_on_channel_duration = 5000;
