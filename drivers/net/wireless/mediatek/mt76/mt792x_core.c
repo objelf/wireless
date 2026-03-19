@@ -70,6 +70,10 @@ static const struct ieee80211_iface_limit if_limits_nan_mcc[] = {
 		.max = 1,
 		.types = BIT(NL80211_IFTYPE_NAN),
 	},
+	{
+		.max = 2,
+		.types = BIT(NL80211_IFTYPE_NAN_DATA),
+	},
 };
 
 static const struct ieee80211_iface_limit if_limits_nan_scc[] = {
@@ -80,6 +84,10 @@ static const struct ieee80211_iface_limit if_limits_nan_scc[] = {
 	{
 		.max = 1,
 		.types = BIT(NL80211_IFTYPE_NAN),
+	},
+	{
+		.max = 2,
+		.types = BIT(NL80211_IFTYPE_NAN_DATA),
 	},
 	{
 		.max = 1,
@@ -785,7 +793,8 @@ int mt792x_init_wiphy(struct ieee80211_hw *hw)
 				 BIT(NL80211_IFTYPE_P2P_DEVICE);
 	if ((dev->fw_features & MT792x_FW_CAP_CNM) &&
 	    (dev->fw_features & MT792x_FW_CAP_NAN)) {
-		wiphy->interface_modes |= BIT(NL80211_IFTYPE_NAN);
+		wiphy->interface_modes |= BIT(NL80211_IFTYPE_NAN) |
+					  BIT(NL80211_IFTYPE_NAN_DATA);
 		wiphy->nan_supported_bands = BIT(NL80211_BAND_2GHZ);
 		wiphy->nan_capa.flags = WIPHY_NAN_FLAGS_CONFIGURABLE_SYNC |
 					WIPHY_NAN_FLAGS_USERSPACE_DE;
