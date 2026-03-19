@@ -329,6 +329,55 @@ int mt7925_nan_change_configure(struct ieee80211_vif *vif,
 }
 
 static void
+mt7925_nan_handle_dw_ind(struct mt792x_dev *dev, struct tlv *tlv)
+{
+	struct ieee80211_channel *chan;
+	struct nan_rpt_dw_evt *evt;
+	struct wireless_dev *wdev;
+	u16 len, channel, dw_num;
+	struct mt792x_vif *mvif;
+	enum nl80211_band band;
+	int freq;
+
+	if (!dev || !tlv)
+		return;
+
+	len = le16_to_cpu(tlv->len);
+	if (len < sizeof(*tlv) + sizeof(*evt)) {
+		dev_warn(dev->mt76.dev,
+			 "nan: short dw event tlv len=%u\n", len);
+		return;
+	}
+
+	if (!dev->nan_vif || !ieee80211_vif_nan_started(dev->nan_vif))
+		return;
+
+	wdev = ieee80211_vif_to_wdev(dev->nan_vif);
+	if (!wdev)
+		return;
+
+	mvif = (struct mt792x_vif *)dev->nan_vif->drv_priv;
+	if (!mvif->nan.conf.enable_dw_notification)
+		return;
+
+	evt = (struct nan_rpt_dw_evt *)tlv->data;
+	channel = le16_to_cpu(evt->channel);
+	dw_num = le16_to_cpu(evt->dw_num);
+
+	band = channel > 13 ? NL80211_BAND_5GHZ : NL80211_BAND_2GHZ;
+	freq = ieee80211_channel_to_frequency(channel, band);
+	chan = ieee80211_get_channel(dev->mt76.hw->wiphy, freq);
+	if (!chan) {
+		dev_dbg(dev->mt76.dev,
+			"nan: no channel for dw end event ch=%u dw=%u\n",
+			channel, dw_num);
+		return;
+	}
+
+	cfg80211_next_nan_dw_notif(wdev, chan, GFP_KERNEL);
+}
+
+static void
 mt7925_nan_mcu_handle_de_event(struct mt792x_dev *dev, struct tlv *tlv)
 {
 	struct mt7925_nan_de_event *de_evt = NULL;
@@ -403,6 +452,9 @@ void mt7925_nan_mcu_event(struct mt792x_dev *dev, struct sk_buff *skb)
 		switch (le16_to_cpu(tlv->tag)) {
 		case NAN_UNI_EVENT_ID_DE_EVENT_IND:
 			mt7925_nan_mcu_handle_de_event(dev, tlv);
+			break;
+		case NAN_UNI_EVENT_REPORT_DW_END:
+			mt7925_nan_handle_dw_ind(dev, tlv);
 			break;
 		default:
 			break;
