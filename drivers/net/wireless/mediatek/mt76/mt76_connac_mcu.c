@@ -423,6 +423,7 @@ void mt76_connac_mcu_sta_basic_tlv(struct mt76_dev *dev, struct sk_buff *skb,
 		basic->aid = cpu_to_le16(link_sta->sta->aid);
 		break;
 	case NL80211_IFTYPE_NAN:
+	case NL80211_IFTYPE_NAN_DATA:
 		basic->conn_type = cpu_to_le32(CONNECTION_NAN);
 		break;
 	default:
@@ -1216,6 +1217,7 @@ int mt76_connac_mcu_uni_add_dev(struct mt76_phy *phy,
 		basic_req.basic.conn_type = cpu_to_le32(CONNECTION_IBSS_ADHOC);
 		break;
 	case NL80211_IFTYPE_NAN:
+	case NL80211_IFTYPE_NAN_DATA:
 		basic_req.basic.conn_type = cpu_to_le32(CONNECTION_NAN);
 		basic_req.basic.conn_state = !enable;
 		break;
@@ -1628,6 +1630,7 @@ int mt76_connac_mcu_uni_add_bss(struct mt76_phy *phy,
 		basic_req.basic.conn_type = cpu_to_le32(CONNECTION_IBSS_ADHOC);
 		break;
 	case NL80211_IFTYPE_NAN:
+	case NL80211_IFTYPE_NAN_DATA:
 		basic_req.basic.conn_type = cpu_to_le32(CONNECTION_NAN);
 		basic_req.basic.active = enable;
 		break;

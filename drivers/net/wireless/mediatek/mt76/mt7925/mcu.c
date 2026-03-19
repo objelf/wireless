@@ -2630,6 +2630,7 @@ mt7925_mcu_bss_basic_tlv(struct sk_buff *skb,
 		basic_req->active = true;
 		break;
 	case NL80211_IFTYPE_NAN:
+	case NL80211_IFTYPE_NAN_DATA:
 		basic_req->conn_type = cpu_to_le32(CONNECTION_NAN);
 		basic_req->active = enable;
 		break;
