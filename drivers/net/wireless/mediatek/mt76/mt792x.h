@@ -140,6 +140,18 @@ struct mt792x_bss_conf {
 	unsigned int link_id;
 };
 
+struct mt792x_nan_conf {
+	u8 master_pref;
+	u8 bands;
+	u8 cluster_id[ETH_ALEN];
+	u32 discovery_beacon_interval;
+	bool enable_dw_notification;
+};
+
+struct mt792x_nan {
+	struct mt792x_nan_conf conf;
+};
+
 struct mt792x_vif {
 	struct mt792x_bss_conf bss_conf; /* must be first */
 	struct mt792x_bss_conf __rcu *link_conf[IEEE80211_MLD_MAX_NUM_LINKS];
@@ -154,6 +166,8 @@ struct mt792x_vif {
 
 	struct work_struct csa_work;
 	struct timer_list csa_timer;
+
+	struct mt792x_nan nan;
 };
 
 struct mt792x_phy {

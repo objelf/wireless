@@ -114,10 +114,26 @@ static void mt7925_nan_set_scan_params(struct mt7925_nan_enable_req_tlv *req,
 		conf->scan_dwell_time < 255 ? conf->scan_dwell_time : 255;
 }
 
+static void
+mt7925_nan_update_conf(struct mt792x_vif *mvif,
+		      const struct cfg80211_nan_conf *conf)
+{
+	mvif->nan.conf.master_pref = conf->master_pref;
+	mvif->nan.conf.bands = conf->bands;
+	mvif->nan.conf.discovery_beacon_interval =
+		conf->discovery_beacon_interval;
+	mvif->nan.conf.enable_dw_notification =
+		conf->enable_dw_notification;
+
+	if (conf->cluster_id)
+		memcpy(mvif->nan.conf.cluster_id, conf->cluster_id, ETH_ALEN);
+}
+
 int mt7925_nan_enable(struct ieee80211_vif *vif,
 		      struct mt792x_dev *dev,
 		      struct cfg80211_nan_conf *conf)
 {
+	struct mt792x_vif *mvif = (struct mt792x_vif *)vif->drv_priv;
 	struct mt76_dev *mdev = &dev->mt76;
 	struct {
 		u8 rsv[4];
@@ -135,7 +151,7 @@ int mt7925_nan_enable(struct ieee80211_vif *vif,
 	};
 	struct mt7925_nan_enable_req_tlv *p_nan_req_tlv = &nan_cmd.nan_req_tlv;
 
-	if (!dev || !conf)
+	if (!vif || !dev || !conf)
 		return -EINVAL;
 
 	p_nan_req_tlv->master_pref = conf->master_pref;
@@ -146,6 +162,8 @@ int mt7925_nan_enable(struct ieee80211_vif *vif,
 	mt7925_nan_set_disc_beacon(p_nan_req_tlv, conf);
 	mt7925_nan_set_rssi_thresholds(p_nan_req_tlv, conf);
 	mt7925_nan_set_scan_params(p_nan_req_tlv, conf);
+
+	mt7925_nan_update_conf(mvif, conf);
 
 	return mt76_mcu_send_msg(mdev, MCU_UNI_CMD(NAN), &nan_cmd, sizeof(nan_cmd), true);
 }
@@ -284,11 +302,12 @@ int mt7925_nan_change_configure(struct ieee80211_vif *vif,
 				struct mt792x_dev *dev,
 				struct cfg80211_nan_conf *conf)
 {
+	struct mt792x_vif *mvif = (struct mt792x_vif *)vif->drv_priv;
 	struct mt76_dev *mdev = &dev->mt76;
 	struct mt7925_nan_common_hdr *hdr = NULL;
 	struct sk_buff *skb = NULL;
 
-	if (!dev || !conf)
+	if (!vif || !dev || !conf)
 		return -EINVAL;
 
 	skb = mt76_mcu_msg_alloc(mdev, NULL, MT7925_NAN_CONF_MAX_SIZE);
@@ -302,6 +321,8 @@ int mt7925_nan_change_configure(struct ieee80211_vif *vif,
 	mt7925_nan_dw_tlv(skb, conf);
 	mt7925_nan_cluster_id_tlv(skb, conf->cluster_id);
 	mt7925_nan_sync_rssi_tlv(skb, conf);
+
+	mt7925_nan_update_conf(mvif, conf);
 
 	return mt76_mcu_skb_send_msg(mdev, skb,
 				     MCU_UNI_CMD(NAN), true);
