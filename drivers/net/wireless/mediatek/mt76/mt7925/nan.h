@@ -35,6 +35,7 @@ enum nan_uni_cmd_tag {
 
 enum nan_uni_event_tag {
 	NAN_UNI_EVENT_ID_DE_EVENT_IND		= 19,
+	NAN_UNI_EVENT_REPORT_DW_END		= 60,
 };
 
 enum nan_disc_event_type {
@@ -45,6 +46,40 @@ enum nan_disc_event_type {
 struct mt7925_nan_social_ch_scan_params {
 	u8 dwell_time[NAN_MAX_SOCIAL_CHANNELS];
 	__le16 scan_period[NAN_MAX_SOCIAL_CHANNELS];
+} __packed;
+
+/* Firmware-reported NAN device information */
+struct nan_dev_info_evt {
+	u8 is_enabled;
+	u8 my_addr[ETH_ALEN];
+	u8 en_fw_election;
+	u8 nan_dev_role;
+	u8 nan_dev_state;
+	u8 mst_preference;
+	u8 random_factor;
+	u8 cnt_hop;
+	u8 cluster_id[ETH_ALEN];
+	u8 anchor_mst_addr[ETH_ALEN];
+	u8 am_preference;
+	u8 am_random_factor;
+	u8 parent_mac[ETH_ALEN];
+	u8 parent_am_preference;
+	u8 parent_am_factor;
+	__le32 ambtt;
+	__le32 tsf[2];
+	u8 pn_igtk[6];
+	u8 pn_bigtk[6];
+} __packed;
+
+/* Firmware NAN discovery window event */
+struct nan_rpt_dw_evt {
+	struct nan_dev_info_evt device_info;
+	__le32 expected_tsf_h;
+	__le32 expected_tsf_l;
+	__le32 actual_tsf_h;
+	__le32 actual_tsf_l;
+	__le16 channel;
+	__le16 dw_num;
 } __packed;
 
 struct mt7925_nan_conf_dw {
