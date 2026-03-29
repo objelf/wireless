@@ -304,6 +304,7 @@ static const struct mt792x_irq_map mt7927_irq_map = {
 		.wm2_complete_mask = MT7927_RX_DONE_INT_ENA7,
 	},
 };
+
 static int mt7925_pci_probe(struct pci_dev *pdev,
 			    const struct pci_device_id *id)
 {
