@@ -254,6 +254,14 @@ static int mt7927_dma_init(struct mt792x_dev *dev)
 	if (ret)
 		return ret;
 
+	ret = mt76_queue_alloc(dev, &dev->mt76.q_rx[MT_RXQ_MCU_WA],
+			       MT7927_RXQ_DATA2,
+			       MT7925_RX_MCU_RING_SIZE,
+			       MT_RX_BUF_SIZE,
+			       MT_RX_DATA_RING_BASE);
+	if (ret)
+		return ret;
+
 	ret = mt76_init_queues(dev, mt792x_poll_rx);
 	if (ret < 0)
 		return ret;
