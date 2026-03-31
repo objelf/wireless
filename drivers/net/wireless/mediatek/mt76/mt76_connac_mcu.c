@@ -495,6 +495,10 @@ void mt76_connac_mcu_wtbl_hdr_trans_tlv(struct sk_buff *skb,
 		htr->to_ds = true;
 		htr->from_ds = true;
 	}
+
+	pr_info("%s: vif_type=%d flags=0x%lx no_rx_trans=%d to_ds=%d from_ds=%d\n",
+		__func__, vif->type, wcid ? wcid->flags : 0UL,
+		htr->no_rx_trans, htr->to_ds, htr->from_ds);
 }
 EXPORT_SYMBOL_GPL(mt76_connac_mcu_wtbl_hdr_trans_tlv);
 

@@ -784,8 +784,9 @@ int mt792x_init_wiphy(struct ieee80211_hw *hw)
 
 	wiphy->iface_combinations = dev->iface_combinations;
 	wiphy->n_iface_combinations = dev->n_iface_combinations;
-	wiphy->flags &= ~(WIPHY_FLAG_IBSS_RSN | WIPHY_FLAG_4ADDR_AP |
-			  WIPHY_FLAG_4ADDR_STATION);
+	wiphy->flags &= ~WIPHY_FLAG_IBSS_RSN;
+	wiphy->flags |= WIPHY_FLAG_4ADDR_AP | WIPHY_FLAG_4ADDR_STATION;
+
 	wiphy->interface_modes = BIT(NL80211_IFTYPE_STATION) |
 				 BIT(NL80211_IFTYPE_AP) |
 				 BIT(NL80211_IFTYPE_P2P_CLIENT) |
