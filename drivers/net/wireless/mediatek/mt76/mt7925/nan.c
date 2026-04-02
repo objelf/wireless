@@ -125,8 +125,7 @@ mt7925_nan_update_conf(struct mt792x_vif *mvif,
 	mvif->nan.conf.enable_dw_notification =
 		conf->enable_dw_notification;
 
-	if (conf->cluster_id)
-		memcpy(mvif->nan.conf.cluster_id, conf->cluster_id, ETH_ALEN);
+	memcpy(mvif->nan.conf.cluster_id, conf->cluster_id, ETH_ALEN);
 }
 
 int mt7925_nan_enable(struct ieee80211_vif *vif,
@@ -425,7 +424,8 @@ mt7925_nan_mcu_handle_de_event(struct mt792x_dev *dev, struct tlv *tlv)
 	dev_dbg(dev->mt76.dev, "nan: own_nmi=%pM master_nmi=%pM\n",
 		de_evt->own_nmi, de_evt->master_nmi);
 
-	ieee80211_nan_cluster_joined(dev->nan_vif, cluster_id, true, GFP_KERNEL);
+	cfg80211_nan_cluster_joined(ieee80211_vif_to_wdev(dev->nan_vif),
+				    cluster_id, true, GFP_KERNEL);
 }
 
 void mt7925_nan_mcu_event(struct mt792x_dev *dev, struct sk_buff *skb)
