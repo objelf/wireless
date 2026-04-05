@@ -156,6 +156,33 @@ enum {
 	MT7925_CLC_MAX_NUM,
 };
 
+static inline bool mt7925_cnm_has_static_band(struct mt76_dev *dev)
+{
+	return is_mt7927(dev);
+}
+
+static inline u8 mt7925_cnm_band(enum nl80211_band band)
+{
+	return band == NL80211_BAND_2GHZ ? 0 : 1;
+}
+
+static inline u8 mt7925_cnm_grant_band(struct mt76_dev *dev, u8 dbdcband,
+					      u8 rfband)
+{
+	if (!mt7925_cnm_has_static_band(dev) || dbdcband <= 1)
+		return dbdcband;
+
+	switch (rfband) {
+	case 1:
+		return 0;
+	case 2:
+	case 3:
+		return 1;
+	default:
+		return dbdcband;
+	}
+}
+
 struct mt7925_clc_rule_v2 {
 	u32 flag;
 	u8 alpha2[2];
