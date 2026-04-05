@@ -1408,6 +1408,8 @@ int mt7925_mcu_set_mlo_roc(struct mt792x_phy *phy, struct mt792x_bss_conf *mconf
 		 * EMLSR : 0xff indicates (BAND_AUTO) without DBDC
 		 */
 		req.roc[i].dbdcband = type == MT7925_ROC_REQ_JOIN ? 0xfe : 0xff;
+		if (mt7925_cnm_has_static_band(&mvif->phy->dev->mt76))
+			req.roc[i].dbdcband = mt7925_cnm_band(chan->band);
 
 		if (chan->hw_value < center_ch)
 			req.roc[i].sco = 1; /* SCA */
@@ -1448,6 +1450,9 @@ int mt7925_mcu_set_roc(struct mt792x_phy *phy, struct mt792x_bss_conf *mconf,
 			.dbdcband = 0xff, /* auto */
 		},
 	};
+
+	if (mt7925_cnm_has_static_band(&dev->mt76))
+		req.roc.dbdcband = mt7925_cnm_band(chan->band);
 
 	if (chan->hw_value < center_ch)
 		req.roc.sco = 1; /* SCA */
