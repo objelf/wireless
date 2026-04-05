@@ -1480,6 +1480,8 @@ int mt7925_mcu_set_roc(struct mt792x_phy *phy, struct mt792x_bss_conf *mconf,
 int mt7925_mcu_abort_roc(struct mt792x_phy *phy, struct mt792x_bss_conf *mconf,
 			 u8 token_id)
 {
+	struct ieee80211_bss_conf *link_conf = NULL;
+	struct ieee80211_vif *vif;
 	struct mt792x_dev *dev = phy->dev;
 	struct {
 		struct {
@@ -1502,6 +1504,15 @@ int mt7925_mcu_abort_roc(struct mt792x_phy *phy, struct mt792x_bss_conf *mconf,
 			.dbdcband = 0xff, /* auto*/
 		},
 	};
+
+	if (mt7925_cnm_has_static_band(&dev->mt76)) {
+		vif = container_of((void *)mconf->vif, struct ieee80211_vif,
+				   drv_priv);
+		link_conf = mt792x_vif_to_bss_conf(vif, mconf->link_id);
+		if (link_conf && link_conf->chanreq.oper.chan)
+			req.abort.dbdcband =
+				mt7925_cnm_band(link_conf->chanreq.oper.chan->band);
+	}
 
 	return mt76_mcu_send_msg(&dev->mt76, MCU_UNI_CMD(ROC),
 				 &req, sizeof(req), true);
