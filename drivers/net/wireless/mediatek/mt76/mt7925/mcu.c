@@ -323,6 +323,8 @@ static void mt7925_mcu_roc_handle_grant(struct mt792x_dev *dev,
 	int duration;
 
 	grant = (struct mt7925_roc_grant_tlv *)tlv;
+	grant->dbdcband = mt7925_cnm_grant_band(&dev->mt76, grant->dbdcband,
+					       grant->rfband);
 
 	/* should never happen */
 	WARN_ON_ONCE((le16_to_cpu(grant->tag) != UNI_EVENT_ROC_GRANT));
