@@ -6,6 +6,7 @@
 
 #include <linux/kernel.h>
 #include <linux/module.h>
+#include <linux/unaligned.h>
 #include <linux/usb.h>
 
 #include "mt792x.h"
@@ -85,6 +86,92 @@ int mt792xu_reset_on_bus_error(struct mt792x_dev *dev)
 	return 0;
 }
 EXPORT_SYMBOL_GPL(mt792xu_reset_on_bus_error);
+
+static inline bool mt792xu_use_mcu_reg_ops(struct mt76_dev *dev)
+{
+	return test_bit(MT76_STATE_MCU_RUNNING, &dev->phy.state) &&
+	       dev->mcu_ops &&
+	       dev->mcu_ops->mcu_rr &&
+	       dev->mcu_ops->mcu_wr;
+}
+
+u32 mt792xu_reg_rr(struct mt76_dev *dev, u32 addr)
+{
+	if (mt792xu_use_mcu_reg_ops(dev))
+		return dev->mcu_ops->mcu_rr(dev, addr);
+
+	return mt792xu_rr(dev, addr);
+}
+EXPORT_SYMBOL_GPL(mt792xu_reg_rr);
+
+void mt792xu_reg_wr(struct mt76_dev *dev, u32 addr, u32 val)
+{
+	if (mt792xu_use_mcu_reg_ops(dev)) {
+		dev->mcu_ops->mcu_wr(dev, addr, val);
+		return;
+	}
+
+	mt792xu_wr(dev, addr, val);
+}
+EXPORT_SYMBOL_GPL(mt792xu_reg_wr);
+
+u32 mt792xu_reg_rmw(struct mt76_dev *dev, u32 addr, u32 mask, u32 val)
+{
+	u32 cur;
+
+	if (!mt792xu_use_mcu_reg_ops(dev))
+		return mt792xu_rmw(dev, addr, mask, val);
+
+	cur = dev->mcu_ops->mcu_rr(dev, addr);
+	cur &= ~mask;
+	cur |= val;
+	dev->mcu_ops->mcu_wr(dev, addr, cur);
+
+	return cur;
+}
+EXPORT_SYMBOL_GPL(mt792xu_reg_rmw);
+
+void mt792xu_reg_write_copy(struct mt76_dev *dev, u32 offset,
+			    const void *data, int len)
+{
+	const u8 *src = data;
+	int i;
+
+	if (!mt792xu_use_mcu_reg_ops(dev)) {
+		mt792xu_copy(dev, offset, data, len);
+		return;
+	}
+
+	for (i = 0; i < len; i += sizeof(u32)) {
+		u32 val = 0;
+		int n = min_t(int, sizeof(u32), len - i);
+
+		memcpy(&val, src + i, n);
+		dev->mcu_ops->mcu_wr(dev, offset + i, le32_to_cpu((__force __le32)val));
+	}
+}
+EXPORT_SYMBOL_GPL(mt792xu_reg_write_copy);
+
+void mt792xu_reg_read_copy(struct mt76_dev *dev, u32 offset,
+			   void *data, int len)
+{
+	u8 *dst = data;
+	int i;
+
+	if (!mt792xu_use_mcu_reg_ops(dev)) {
+		mt76u_read_copy(dev, offset, data, len);
+		return;
+	}
+
+	for (i = 0; i < len; i += sizeof(u32)) {
+		__le32 val;
+		int n = min_t(int, sizeof(u32), len - i);
+
+		val = cpu_to_le32(dev->mcu_ops->mcu_rr(dev, offset + i));
+		memcpy(dst + i, &val, n);
+	}
+}
+EXPORT_SYMBOL_GPL(mt792xu_reg_read_copy);
 
 u32 mt792xu_rr(struct mt76_dev *dev, u32 addr)
 {

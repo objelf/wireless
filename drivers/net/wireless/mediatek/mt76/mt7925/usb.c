@@ -56,6 +56,8 @@ static int mt7925u_mcu_init(struct mt792x_dev *dev)
 		.tailroom = MT_USB_TAIL_SIZE,
 		.mcu_skb_send_msg = mt7925u_mcu_send_message,
 		.mcu_parse_response = mt7925_mcu_parse_response,
+		.mcu_rr = mt76_connac_mcu_reg_rr,
+		.mcu_wr = mt76_connac_mcu_reg_wr,
 	};
 	int ret;
 
@@ -155,11 +157,11 @@ static int mt7925u_probe(struct usb_interface *usb_intf,
 		.reset = mt7925u_mac_reset,
 	};
 	static struct mt76_bus_ops bus_ops = {
-		.rr = mt792xu_rr,
-		.wr = mt792xu_wr,
-		.rmw = mt792xu_rmw,
-		.read_copy = mt76u_read_copy,
-		.write_copy = mt792xu_copy,
+		.rr = mt792xu_reg_rr,
+		.wr = mt792xu_reg_wr,
+		.rmw = mt792xu_reg_rmw,
+		.read_copy = mt792xu_reg_read_copy,
+		.write_copy = mt792xu_reg_write_copy,
 		.type = MT76_BUS_USB,
 	};
 	struct usb_device *udev = interface_to_usbdev(usb_intf);

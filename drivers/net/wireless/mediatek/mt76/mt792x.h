@@ -545,9 +545,17 @@ int mt792xu_reset_on_bus_error(struct mt792x_dev *dev);
 u32 mt792xu_rr(struct mt76_dev *dev, u32 addr);
 void mt792xu_wr(struct mt76_dev *dev, u32 addr, u32 val);
 u32 mt792xu_rmw(struct mt76_dev *dev, u32 addr, u32 mask, u32 val);
+u32 mt792xu_reg_rr(struct mt76_dev *dev, u32 addr);
+void mt792xu_reg_wr(struct mt76_dev *dev, u32 addr, u32 val);
+u32 mt792xu_reg_rmw(struct mt76_dev *dev, u32 addr, u32 mask, u32 val);
+void mt792xu_reg_read_copy(struct mt76_dev *dev, u32 offset,
+			   void *data, int len);
+void mt792xu_reg_write_copy(struct mt76_dev *dev, u32 offset,
+			    const void *data, int len);
 void mt792xu_copy(struct mt76_dev *dev, u32 offset, const void *data, int len);
 void mt792xu_disconnect(struct usb_interface *usb_intf);
 void mt792xu_stop(struct ieee80211_hw *hw, bool suspend);
+
 
 static inline void
 mt792x_skb_add_usb_sdio_hdr(struct mt792x_dev *dev, struct sk_buff *skb,
