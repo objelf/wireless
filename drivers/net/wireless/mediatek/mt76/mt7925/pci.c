@@ -383,7 +383,8 @@ static int mt7925_pci_probe(struct pci_dev *pdev,
 	if (ret)
 		goto err_free_pci_vec;
 
-	is_mt7927_hw = (pdev->device == 0x6639 || pdev->device == 0x7927);
+	is_mt7927_hw = (pdev->device == 0x6639 || pdev->device == 0x7927 ||
+			pdev->device == 0x0738);
 
 	/* MT7927: ASPM L1 causes unreliable WFDMA register access */
 	if (mt7925_disable_aspm || is_mt7927_hw)
@@ -443,6 +444,15 @@ static int mt7925_pci_probe(struct pci_dev *pdev,
 
 	dev_info(mdev->dev, "ASIC revision: %04x\n", mdev->rev);
 
+	if (is_mt7927_hw && mt76_chip(mdev) != 0x7927) {
+		dev_info(mdev->dev,
+			 "MT7927 raw CHIPID=0x%04x, forcing chip=0x7927\n",
+			 mt76_chip(mdev));
+		mdev->rev = (0x7927 << 16) | (mdev->rev & 0xff);
+	}
+
+	dev_info(mdev->dev, "ASIC revision after fixup: %04x\n", mdev->rev);
+
 	mt76_rmw_field(dev, MT_HW_EMI_CTL, MT_HW_EMI_CTL_SLPPROT_EN, 1);
 
 	ret = mt792x_wfsys_reset(dev);
@@ -460,10 +470,10 @@ static int mt7925_pci_probe(struct pci_dev *pdev,
 	if (ret)
 		goto err_free_dev;
 
-	if (is_mt7925(&dev->mt76))
-		ret = mt7925_dma_init(dev);
-	else if (is_mt7927(&dev->mt76))
+	if (is_mt7927(&dev->mt76))
 		ret = mt7927_dma_init(dev);
+	else if (is_mt7925(&dev->mt76))
+		ret = mt7925_dma_init(dev);
 	else
 		ret = -EINVAL;
 

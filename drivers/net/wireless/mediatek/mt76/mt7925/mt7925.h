@@ -29,6 +29,28 @@
 
 #define HIF_TRAFFIC_IDLE 0x2
 
+struct mt7925_mcu_tx_done_msg {
+	__le16 tag;
+	__le16 len;
+	u8 packet_seq;
+	u8 status;
+	__le16 seqno;
+	u8 wlan_idx;
+	u8 tx_count;
+	__le16 tx_rate;
+	u8 flag;
+	u8 tid;
+	u8 rsp_rate;
+	u8 rate_table_idx;
+	u8 bandwidth;
+	u8 tx_power;
+	u8 flush_reason;
+	u8 rsv[1];
+	__le32 tx_delay;
+	__le32 timestamp;
+	__le32 applied_flag;
+} __packed;
+
 enum {
 	UNI_EVENT_HIF_CTRL_BASIC = 0,
 	UNI_EVENT_HIF_CTRL_TAG_NUM
@@ -156,30 +178,15 @@ enum {
 	MT7925_CLC_MAX_NUM,
 };
 
-static inline bool mt7925_cnm_has_static_band(struct mt76_dev *dev)
+static inline u8 mt7925_static_dbdc_band_idx(enum nl80211_band band)
 {
-	return is_mt7927(dev);
-}
-
-static inline u8 mt7925_cnm_band(enum nl80211_band band)
-{
-	return band == NL80211_BAND_2GHZ ? 0 : 1;
-}
-
-static inline u8 mt7925_cnm_grant_band(struct mt76_dev *dev, u8 dbdcband,
-					      u8 rfband)
-{
-	if (!mt7925_cnm_has_static_band(dev) || dbdcband <= 1)
-		return dbdcband;
-
-	switch (rfband) {
-	case 1:
-		return 0;
-	case 2:
-	case 3:
-		return 1;
+	switch (band) {
+	case NL80211_BAND_2GHZ:
+		return 0; /* Band1 in FW */
+	case NL80211_BAND_5GHZ:
+	case NL80211_BAND_6GHZ:
 	default:
-		return dbdcband;
+		return 1; /* Band0 in FW */
 	}
 }
 
@@ -360,6 +367,10 @@ int mt7925_mcu_parse_response(struct mt76_dev *mdev, int cmd,
 
 int mt7925e_mac_reset(struct mt792x_dev *dev);
 int mt7925e_mcu_init(struct mt792x_dev *dev);
+struct mt7925_mcu_tx_done_msg;
+
+void mt7925_mac_add_txs_from_event(struct mt792x_dev *dev,
+				   struct mt7925_mcu_tx_done_msg *tx_done);
 void mt7925_mac_add_txs(struct mt792x_dev *dev, void *data);
 void mt7925_set_runtime_pm(struct mt792x_dev *dev);
 void mt7925_mcu_set_suspend_iter(void *priv, u8 *mac,

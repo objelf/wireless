@@ -65,6 +65,175 @@ DEFINE_DEBUGFS_ATTRIBUTE(fops_fw_debug, mt7925_fw_debug_get,
 
 DEFINE_SHOW_ATTRIBUTE(mt792x_tx_stats);
 
+enum {
+	UNI_ROC_GET_INFO = 2,
+};
+
+enum {
+	UNI_EVENT_ROC_GET_CHANNEL_INFO = 1,
+	UNI_EVENT_ROC_GET_BSS_INFO = 2,
+};
+
+struct mt7925_roc_get_info_req {
+	u8 rsv[4];
+	__le16 tag;
+	__le16 len;
+} __packed;
+
+struct mt7925_roc_get_channel_info_tlv {
+	__le16 tag;
+	__le16 len;
+	u8 dbdc_band;
+	u8 timeline_enable;
+	u8 op_ch_num;
+	u8 dbdc_enabled;
+	u8 data[];
+} __packed;
+
+struct mt7925_roc_channel_info {
+	u8 pri_channel;
+	u8 ch_bw;
+	u8 ch_sco;
+	u8 ch_s1;
+	u8 ch_s2;
+	u8 ch_bss_num;
+	__le16 ch_bss_bitmap_list;
+} __packed;
+
+struct mt7925_roc_get_bss_info_tlv {
+	__le16 tag;
+	__le16 len;
+	u8 bss_num;
+	u8 rsv[3];
+	u8 data[];
+} __packed;
+
+struct mt7925_roc_bss_info {
+	u8 bss_type;
+	u8 bss_inuse;
+	u8 bss_active;
+	u8 bss_connect_state;
+	u8 bss_pri_channel;
+	u8 bss_dbdc_band;
+	u8 bss_omac_idx;
+	u8 bss_omac_dbdc_band;
+	u8 bss_tx_nss;
+	u8 bss_rx_nss;
+	u8 bss_link_idx;
+	u8 rsv;
+} __packed;
+
+static int
+mt7925_cnm_info(struct seq_file *s, void *data)
+{
+	struct mt792x_dev *dev = dev_get_drvdata(s->private);
+	struct mt7925_roc_get_info_req req = {
+		.tag = cpu_to_le16(UNI_ROC_GET_INFO),
+		.len = cpu_to_le16(sizeof(req) - 4),
+	};
+	struct sk_buff *skb;
+	int ret = 0;
+	int i = 0;
+
+	if (!is_mt7927(&dev->mt76))
+		return -EOPNOTSUPP;
+
+	mt792x_mutex_acquire(dev);
+	ret = mt76_mcu_send_and_get_msg(&dev->mt76, MCU_UNI_CMD(ROC),
+					&req, sizeof(req), true, &skb);
+	mt792x_mutex_release(dev);
+	if (ret)
+		return ret;
+
+	if (skb->len < 4) {
+		dev_kfree_skb(skb);
+		return -EINVAL;
+	}
+
+	skb_pull(skb, 4);
+
+	while (i + sizeof(struct tlv) <= skb->len) {
+		struct tlv *tlv = (struct tlv *)(skb->data + i);
+		u16 tag = le16_to_cpu(tlv->tag);
+		u16 len = le16_to_cpu(tlv->len);
+
+		if (len < sizeof(*tlv) || i + len > skb->len) {
+			ret = -EINVAL;
+			break;
+		}
+
+		switch (tag) {
+		case UNI_EVENT_ROC_GET_CHANNEL_INFO: {
+			struct mt7925_roc_get_channel_info_tlv *ev =
+				(struct mt7925_roc_get_channel_info_tlv *)tlv;
+			int n;
+
+			seq_printf(s, "channel_info: dbdc_band=%u timeline_enable=%u op_ch_num=%u dbdc enabled = %u\n",
+				   ev->dbdc_band, ev->timeline_enable, ev->op_ch_num, ev->dbdc_enabled);
+
+			if (len < sizeof(*ev)) {
+				ret = -EINVAL;
+				break;
+			}
+
+			n = (len - sizeof(*ev)) / sizeof(struct mt7925_roc_channel_info);
+			for (int j = 0; j < n; j++) {
+				struct mt7925_roc_channel_info *ch =
+					(struct mt7925_roc_channel_info *)(ev->data +
+						j * sizeof(*ch));
+
+				seq_printf(s,
+					   "  ch[%d]: pri=%u bw=%u sco=%u s1=%u s2=%u bss_num=%u bss_bitmap=0x%04x\n",
+					   j, ch->pri_channel, ch->ch_bw, ch->ch_sco,
+					   ch->ch_s1, ch->ch_s2, ch->ch_bss_num,
+					   le16_to_cpu(ch->ch_bss_bitmap_list));
+			}
+			break;
+		}
+		case UNI_EVENT_ROC_GET_BSS_INFO: {
+			struct mt7925_roc_get_bss_info_tlv *ev =
+				(struct mt7925_roc_get_bss_info_tlv *)tlv;
+			int n;
+
+			seq_printf(s, "bss_info: bss_num=%u\n", ev->bss_num);
+
+			if (len < sizeof(*ev)) {
+				ret = -EINVAL;
+				break;
+			}
+
+			n = (len - sizeof(*ev)) / sizeof(struct mt7925_roc_bss_info);
+			for (int j = 0; j < n; j++) {
+				struct mt7925_roc_bss_info *bss =
+					(struct mt7925_roc_bss_info *)(ev->data +
+						j * sizeof(*bss));
+
+				seq_printf(s,
+					   "  bss[%d]: type=%u inuse=%u active=%u connect=%u pri=%u dbdc_band=%u omac_idx=%u omac_dbdc_band=%u tx_nss = %u rx_nss = %u link_idx = %u\n",
+					   j, bss->bss_type, bss->bss_inuse,
+					   bss->bss_active, bss->bss_connect_state,
+					   bss->bss_pri_channel, bss->bss_dbdc_band,
+					   bss->bss_omac_idx, bss->bss_omac_dbdc_band,
+					   bss->bss_rx_nss, bss->bss_tx_nss, bss->bss_link_idx);
+			}
+			break;
+		}
+		default:
+			seq_printf(s, "tag=%u len=%u\n", tag, len);
+			break;
+		}
+
+		if (ret)
+			break;
+
+		i += len;
+	}
+
+	dev_kfree_skb(skb);
+
+	return ret;
+}
+
 static void
 mt7925_seq_puts_array(struct seq_file *file, const char *str,
 		      s8 val[][2], int len, u8 band_idx)
@@ -305,6 +474,8 @@ int mt7925_init_debugfs(struct mt792x_dev *dev)
 				    mt792x_queues_acq);
 	debugfs_create_devm_seqfile(dev->mt76.dev, "txpower_sku", dir,
 				    mt7925_txpwr);
+	debugfs_create_devm_seqfile(dev->mt76.dev, "cnm_info", dir,
+				    mt7925_cnm_info);
 	debugfs_create_file("tx_stats", 0400, dir, dev, &mt792x_tx_stats_fops);
 	debugfs_create_file("fw_debug", 0600, dir, dev, &fops_fw_debug);
 	debugfs_create_file("runtime-pm", 0600, dir, dev, &fops_pm);

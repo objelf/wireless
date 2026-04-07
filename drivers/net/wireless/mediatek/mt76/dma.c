@@ -4,9 +4,23 @@
  */
 
 #include <linux/dma-mapping.h>
+#include <linux/ftrace.h>
 #include "mt76.h"
 #include "dma.h"
 #include "mt76_connac.h"
+
+static __always_inline void
+mt76_mt7927_ring_log(struct mt76_dev *dev, const char *tag, struct mt76_queue *q,
+			 u32 qid, int idx)
+{
+	if (!is_mt7927(dev))
+		return;
+
+	trace_printk("mt7927 %s qid=%u hwq=%u head=%u tail=%u queued=%u ndesc=%u cpu=%u dma=%u idx=%d\n",
+		      tag, qid, q->hw_idx, q->head, q->tail, q->queued, q->ndesc,
+		      mt76_queue_is_emi(q) ? le16_to_cpu(*q->emi_cpu_idx) : Q_READ(q, cpu_idx),
+		      Q_READ(q, dma_idx), idx);
+}
 
 static struct mt76_txwi_cache *
 mt76_alloc_txwi(struct mt76_dev *dev)
@@ -399,11 +413,13 @@ mt76_dma_tx_cleanup_idx(struct mt76_dev *dev, struct mt76_queue *q, int idx,
 static void
 mt76_dma_kick_queue(struct mt76_dev *dev, struct mt76_queue *q)
 {
+	mt76_mt7927_ring_log(dev, "kick-before", q, q->hw_idx, -1);
 	wmb();
 	if (mt76_queue_is_emi(q))
 		*q->emi_cpu_idx = cpu_to_le16(q->head);
 	else
 		Q_WRITE(q, cpu_idx, q->head);
+	mt76_mt7927_ring_log(dev, "kick-after", q, q->hw_idx, -1);
 }
 
 static void
@@ -421,7 +437,11 @@ mt76_dma_tx_cleanup(struct mt76_dev *dev, struct mt76_queue *q, bool flush)
 	else
 		last = Q_READ(q, dma_idx);
 
+	mt76_mt7927_ring_log(dev, flush ? "tx-cleanup-flush" : "tx-cleanup-start",
+			    q, q->hw_idx, last);
+
 	while (q->queued > 0 && q->tail != last) {
+		mt76_mt7927_ring_log(dev, "tx-cleanup-step-before", q, q->hw_idx, q->tail);
 		mt76_dma_tx_cleanup_idx(dev, q, q->tail, &entry);
 		mt76_npu_txdesc_cleanup(q, q->tail);
 		mt76_queue_tx_complete(dev, q, &entry);
@@ -431,6 +451,7 @@ mt76_dma_tx_cleanup(struct mt76_dev *dev, struct mt76_queue *q, bool flush)
 				mt76_put_txwi(dev, entry.txwi);
 		}
 
+		mt76_mt7927_ring_log(dev, "tx-cleanup-step-after", q, q->hw_idx, q->tail);
 		if (!flush && q->tail == last)
 			last = Q_READ(q, dma_idx);
 	}
@@ -987,9 +1008,12 @@ mt76_dma_rx_process(struct mt76_dev *dev, struct mt76_queue *q, int budget)
 		check_ddone = true;
 	}
 
+	mt76_mt7927_ring_log(dev, "rx-process-start", q, q->hw_idx, dma_idx);
+
 	while (done < budget) {
 		bool drop = false;
 		u32 info;
+		int tail;
 
 		if (check_ddone) {
 			if (q->tail == dma_idx)
@@ -999,8 +1023,12 @@ mt76_dma_rx_process(struct mt76_dev *dev, struct mt76_queue *q, int budget)
 				break;
 		}
 
+		tail = q->tail;
+		mt76_mt7927_ring_log(dev, "rx-dequeue-before", q, q->hw_idx, tail);
 		data = mt76_dma_dequeue(dev, q, false, &len, &info, &more,
 					&drop);
+		mt76_mt7927_ring_log(dev, data ? "rx-dequeue-after" : "rx-dequeue-null",
+				    q, q->hw_idx, tail);
 		if (!data)
 			break;
 

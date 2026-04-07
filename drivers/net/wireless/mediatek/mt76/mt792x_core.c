@@ -928,6 +928,72 @@ mt792x_get_mac80211_ops(struct device *dev,
 	if (!ops)
 		return NULL;
 
+	pr_info("mt792x: ops dup done ops=%p mac80211_ops=%p\n",
+		ops, mac80211_ops);
+	pr_info("mt792x: before change roc=%ps cancel_roc=%ps add_chanctx=%ps remove_chanctx=%ps change_chanctx=%ps switch_vif_chanctx=%ps assign_vif_chanctx=%ps unassign_vif_chanctx=%ps mgd_prepare_tx=%ps mgd_complete_tx=%ps\n",
+		ops->remain_on_channel,
+		ops->cancel_remain_on_channel,
+		ops->add_chanctx,
+		ops->remove_chanctx,
+		ops->change_chanctx,
+		ops->switch_vif_chanctx,
+		ops->assign_vif_chanctx,
+		ops->unassign_vif_chanctx,
+		ops->mgd_prepare_tx,
+		ops->mgd_complete_tx);
+
+	*fw_features = mt792x_get_offload_capability(dev, drv_data);
+
+	if (mt792x_needs_cnm_runtime(drv_data))
+		*fw_features |= MT792x_FW_CAP_CNM;
+
+	pr_info("mt792x: fw_features=0x%x CNM=%d\n",
+		*fw_features, !!(*fw_features & MT792x_FW_CAP_CNM));
+
+	if (!(*fw_features & MT792x_FW_CAP_CNM)) {
+		pr_info("mt792x: CNM disabled, patching ieee80211_ops callbacks\n");
+
+		ops->remain_on_channel = NULL;
+		ops->cancel_remain_on_channel = NULL;
+		ops->add_chanctx = ieee80211_emulate_add_chanctx;
+		ops->remove_chanctx = ieee80211_emulate_remove_chanctx;
+		ops->change_chanctx = ieee80211_emulate_change_chanctx;
+		ops->switch_vif_chanctx = ieee80211_emulate_switch_vif_chanctx;
+		ops->assign_vif_chanctx = NULL;
+		ops->unassign_vif_chanctx = NULL;
+		ops->mgd_prepare_tx = NULL;
+		ops->mgd_complete_tx = NULL;
+	}
+
+	pr_info("mt792x: after change roc=%ps cancel_roc=%ps add_chanctx=%ps remove_chanctx=%ps change_chanctx=%ps switch_vif_chanctx=%ps assign_vif_chanctx=%ps unassign_vif_chanctx=%ps mgd_prepare_tx=%ps mgd_complete_tx=%ps\n",
+		ops->remain_on_channel,
+		ops->cancel_remain_on_channel,
+		ops->add_chanctx,
+		ops->remove_chanctx,
+		ops->change_chanctx,
+		ops->switch_vif_chanctx,
+		ops->assign_vif_chanctx,
+		ops->unassign_vif_chanctx,
+		ops->mgd_prepare_tx,
+		ops->mgd_complete_tx);
+
+	return ops;
+}
+EXPORT_SYMBOL_GPL(mt792x_get_mac80211_ops);
+
+#if 0
+struct ieee80211_ops *
+mt792x_get_mac80211_ops(struct device *dev,
+			const struct ieee80211_ops *mac80211_ops,
+			void *drv_data, u8 *fw_features)
+{
+	struct ieee80211_ops *ops;
+
+	ops = devm_kmemdup(dev, mac80211_ops, sizeof(struct ieee80211_ops),
+			   GFP_KERNEL);
+	if (!ops)
+		return NULL;
+
 	*fw_features = mt792x_get_offload_capability(dev, drv_data);
 
 	if (mt792x_needs_cnm_runtime(drv_data))
@@ -948,6 +1014,7 @@ mt792x_get_mac80211_ops(struct device *dev,
 	return ops;
 }
 EXPORT_SYMBOL_GPL(mt792x_get_mac80211_ops);
+#endif
 
 int mt792x_init_wcid(struct mt792x_dev *dev)
 {

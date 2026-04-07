@@ -5,6 +5,17 @@
 
 #include "mt76.h"
 
+static void mt76_mcu_trace_send(struct mt76_dev *dev, const char *path,
+				void *caller, int cmd, bool wait_resp,
+				int len, int seq, int ret)
+{
+#if 0
+	dev_info(dev->dev,
+		 "mcu trace: path=%s caller=%pS cmd=%08x wait_resp=%d len=%d seq=%d ret=%d\n",
+		 path, caller, cmd, wait_resp, len, seq, ret);
+#endif
+}
+
 struct sk_buff *
 __mt76_mcu_msg_alloc(struct mt76_dev *dev, const void *data,
 		     int len, int data_len, gfp_t gfp)
@@ -56,16 +67,26 @@ EXPORT_SYMBOL_GPL(mt76_mcu_rx_event);
 int mt76_mcu_send_and_get_msg(struct mt76_dev *dev, int cmd, const void *data,
 			      int len, bool wait_resp, struct sk_buff **ret_skb)
 {
+	void *caller = __builtin_return_address(0);
 	struct sk_buff *skb;
+	int ret;
+
+	mt76_mcu_trace_send(dev, __func__, caller, cmd, wait_resp, len, -1, 0);
 
 	if (dev->mcu_ops->mcu_send_msg)
 		return dev->mcu_ops->mcu_send_msg(dev, cmd, data, len, wait_resp);
 
 	skb = mt76_mcu_msg_alloc(dev, data, len);
-	if (!skb)
+	if (!skb) {
+		mt76_mcu_trace_send(dev, __func__, caller, cmd, wait_resp,
+				    len, -1, -ENOMEM);
 		return -ENOMEM;
+	}
 
-	return mt76_mcu_skb_send_and_get_msg(dev, skb, cmd, wait_resp, ret_skb);
+	ret = mt76_mcu_skb_send_and_get_msg(dev, skb, cmd, wait_resp, ret_skb);
+	mt76_mcu_trace_send(dev, __func__, caller, cmd, wait_resp, len, -1, ret);
+
+	return ret;
 }
 EXPORT_SYMBOL_GPL(mt76_mcu_send_and_get_msg);
 
@@ -73,14 +94,18 @@ int mt76_mcu_skb_send_and_get_msg(struct mt76_dev *dev, struct sk_buff *skb,
 				  int cmd, bool wait_resp,
 				  struct sk_buff **ret_skb)
 {
+	void *caller = __builtin_return_address(0);
 	unsigned int retry = 0;
 	struct sk_buff *orig_skb = NULL;
 	unsigned long expires;
-	int ret, seq;
+	int ret, seq = -1;
+	int len = skb ? skb->len : -1;
 
 	if (mt76_is_sdio(dev))
 		if (test_bit(MT76_RESET, &dev->phy.state) && atomic_read(&dev->bus_hung))
 			return -EIO;
+
+	mt76_mcu_trace_send(dev, __func__, caller, cmd, wait_resp, len, seq, 0);
 
 	if (ret_skb)
 		*ret_skb = NULL;
@@ -90,8 +115,13 @@ int mt76_mcu_skb_send_and_get_msg(struct mt76_dev *dev, struct sk_buff *skb,
 	if (dev->mcu_ops->mcu_skb_prepare_msg) {
 		orig_skb = skb;
 		ret = dev->mcu_ops->mcu_skb_prepare_msg(dev, skb, cmd, &seq);
-		if (ret < 0)
+		if (ret < 0) {
+			mt76_mcu_trace_send(dev, __func__, caller, cmd, wait_resp,
+					    len, seq, ret);
 			goto out;
+		}
+
+		mt76_mcu_trace_send(dev, "mcu_prepare", caller, cmd, wait_resp, skb->len, seq, ret);
 	}
 
 retry:
@@ -99,11 +129,15 @@ retry:
 	if (orig_skb)
 		skb_get(orig_skb);
 	ret = dev->mcu_ops->mcu_skb_send_msg(dev, skb, cmd, wait_resp ? &seq : NULL);
+	mt76_mcu_trace_send(dev, "mcu_send", caller, cmd, wait_resp,
+			    skb ? skb->len : len, seq, ret);
 	if (ret < 0)
-		goto out;
+ 		goto out;
 
 	if (!wait_resp) {
 		ret = 0;
+		mt76_mcu_trace_send(dev, "mcu_done_nowait", caller, cmd,
+				    wait_resp, skb ? skb->len : len, seq, ret);
 		goto out;
 	}
 
@@ -115,11 +149,15 @@ retry:
 		    orig_skb && retry++ < dev->mcu_ops->max_retry) {
 			dev_err(dev->dev, "Retry message %08x (seq %d)\n",
 				cmd, seq);
+			mt76_mcu_trace_send(dev, "mcu_retry", caller, cmd,
+					    wait_resp, len, seq, -EAGAIN);
 			skb = orig_skb;
 			goto retry;
 		}
 
 		ret = dev->mcu_ops->mcu_parse_response(dev, cmd, skb, seq);
+		mt76_mcu_trace_send(dev, "mcu_resp", caller, cmd, wait_resp,
+				    skb ? skb->len : len, seq, ret);
 		if (!ret && ret_skb)
 			*ret_skb = skb;
 		else
@@ -129,6 +167,9 @@ retry:
 
 out:
 	dev_kfree_skb(orig_skb);
+	mt76_mcu_trace_send(dev, "mcu_exit", caller, cmd, wait_resp,
+			    len, seq, ret);
+
 	mutex_unlock(&dev->mcu.mutex);
 
 	return ret;

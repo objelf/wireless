@@ -143,7 +143,8 @@ enum {
 };
 
 enum {
-	UNI_MBMC_SETTING,
+	UNI_MBMC_SETTING = 0,
+	UNI_MBMC_NO_RESP_SETTING = 1,
 };
 
 enum {
@@ -326,9 +327,10 @@ struct mbmc_conf_tlv {
 	__le16 tag;
 	__le16 len;
 
-	u8 mbmc_en;
-	u8 band;
-	u8 pad[2];
+	u8 mbmc_en;	/* 1 to eanble DBDC /MBMC */
+	u8 aa_mode_en;	/* 0: A+G, 1 = A+A, 2: Hybrid MLO */
+	u8 rf_band;
+	u8 reason;
 } __packed;
 
 struct edca {
@@ -674,7 +676,8 @@ mt7925_mcu_get_cipher(int cipher)
 	}
 }
 
-int mt7925_mcu_set_dbdc(struct mt76_phy *phy, bool enable);
+int mt7925_mcu_set_dbdc(struct mt76_phy *phy, bool enable, u8 aa_mode_en,
+			u8 reason);
 int mt7925_mcu_hw_scan(struct mt76_phy *phy, struct ieee80211_vif *vif,
 		       struct ieee80211_scan_request *scan_req);
 int mt7925_mcu_cancel_hw_scan(struct mt76_phy *phy,

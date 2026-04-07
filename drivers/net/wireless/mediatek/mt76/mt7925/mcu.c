@@ -44,7 +44,13 @@ int mt7925_mcu_parse_response(struct mt76_dev *mdev, int cmd,
 
 		skb_pull(skb, sizeof(*rxd));
 		event = (struct mt7925_mcu_uni_event *)skb->data;
-		ret = le32_to_cpu(event->status);
+		
+		if (cmd == MCU_UNI_CMD(DEV_INFO_UPDATE) ||
+		    cmd == MCU_UNI_CMD(BSS_INFO_UPDATE) ||
+		    cmd == MCU_UNI_CMD(STA_REC_UPDATE))
+			ret = 0;
+		else
+			ret = le32_to_cpu(event->status);
 		/* skip invalid event */
 		if (mcu_cmd != event->cid)
 			ret = -EAGAIN;
@@ -313,6 +319,11 @@ mt7925_mcu_roc_iter(void *priv, u8 *mac, struct ieee80211_vif *vif)
 		return;
 
 	mvif->band_idx = grant->dbdcband;
+
+	pr_info("ROC grant DBDC: ROC grant dbdcband=0x%02x"
+		 " for bss_idx = %u, keeping band_idx = %u\n",
+		 grant->dbdcband, grant->bss_idx,
+		 mvif->band_idx);
 }
 
 static void mt7925_mcu_roc_handle_grant(struct mt792x_dev *dev,
@@ -323,8 +334,6 @@ static void mt7925_mcu_roc_handle_grant(struct mt792x_dev *dev,
 	int duration;
 
 	grant = (struct mt7925_roc_grant_tlv *)tlv;
-	grant->dbdcband = mt7925_cnm_grant_band(&dev->mt76, grant->dbdcband,
-					       grant->rfband);
 
 	/* should never happen */
 	WARN_ON_ONCE((le16_to_cpu(grant->tag) != UNI_EVENT_ROC_GRANT));
@@ -429,7 +438,8 @@ mt7925_mcu_tx_done_event(struct mt792x_dev *dev, struct sk_buff *skb)
 		u8 ver;
 		u8 rsv[3];
 		u8 data[];
-	} __packed * txs;
+	} __packed *txs;
+	struct mt7925_mcu_tx_done_msg *msg;
 	struct tlv *tlv;
 	u32 tlv_len;
 
@@ -437,17 +447,34 @@ mt7925_mcu_tx_done_event(struct mt792x_dev *dev, struct sk_buff *skb)
 	tlv = (struct tlv *)skb->data;
 	tlv_len = skb->len;
 
-	while (tlv_len > 0 && le16_to_cpu(tlv->len) <= tlv_len) {
-		switch (le16_to_cpu(tlv->tag)) {
+	while (tlv_len >= sizeof(*tlv)) {
+		u16 tag = le16_to_cpu(tlv->tag);
+		u16 len = le16_to_cpu(tlv->len);
+
+		if (len < sizeof(*tlv) || len > tlv_len)
+			break;
+
+		switch (tag) {
+		case UNI_EVENT_TX_DONE_MSG:
+			if (len < sizeof(*msg))
+				break;
+			pr_err("UNI_EVENT_TX_DONE_MSG\n");
+			msg = (struct mt7925_mcu_tx_done_msg *)tlv;
+			mt7925_mac_add_txs_from_event(dev, msg);
+			break;
 		case UNI_EVENT_TX_DONE_RAW:
+			if (len < sizeof(*tlv) + sizeof(*txs))
+				break;
+			pr_err("UNI_EVENT_TX_DONE_RAW\n");
 			txs = (struct mt7925_mcu_txs_event *)tlv->data;
 			mt7925_mac_add_txs(dev, txs->data);
 			break;
 		default:
 			break;
 		}
-		tlv_len -= le16_to_cpu(tlv->len);
-		tlv = (struct tlv *)((char *)(tlv) + le16_to_cpu(tlv->len));
+
+		tlv_len -= len;
+		tlv = (struct tlv *)((u8 *)tlv + len);
 	}
 }
 
@@ -570,6 +597,42 @@ mt7925_mcu_uni_debug_msg_event(struct mt792x_dev *dev, struct sk_buff *skb)
 	}
 }
 
+struct mt7925_mbmc_event_tlv {
+	__le16 tag;
+	__le16 len;
+	u8	mbmc_en; /* 1: dbdc now enabled */
+	u8	rsv[3];
+} __packed;
+
+static void
+mt7925_mcu_handle_mbmc_event(struct mt792x_dev *dev, struct sk_buff *skb)
+{
+	struct mt792x_phy *phy = &dev->phy;
+	struct mbmc_conf_tlv *tlv;
+	u32 tlv_len;
+
+	skb_pull(skb, sizeof(struct mt7925_mcu_rxd) + 4);
+	tlv_len = skb->len;
+	tlv = (struct mbmc_conf_tlv *) skb->data;
+
+	while (tlv_len >= sizeof(*tlv) &&
+	       le16_to_cpu(tlv->len) >= sizeof(*tlv) &&
+	       le16_to_cpu(tlv->len) <= tlv_len) {
+		u16 tag = le16_to_cpu(tlv->tag);
+		
+		if (tag == UNI_MBMC_SETTING || tag == UNI_MBMC_NO_RESP_SETTING) {
+			dev_info(dev->mt76.dev,
+				 "MBMC event: tag=%u mbmc_en=%u aa_mode=%u\n",
+				 tag, tlv->mbmc_en, tlv->aa_mode_en);
+			break;
+		}
+
+		tlv_len -= le16_to_cpu(tlv->len);
+		tlv = (struct mbmc_conf_tlv *)
+			((u8 *)tlv + le16_to_cpu(tlv->len));
+	}
+}
+
 static void
 mt7925_mcu_uni_rx_unsolicited_event(struct mt792x_dev *dev,
 				    struct sk_buff *skb)
@@ -587,6 +650,9 @@ mt7925_mcu_uni_rx_unsolicited_event(struct mt792x_dev *dev,
 		break;
 	case MCU_UNI_EVENT_ROC:
 		mt7925_mcu_uni_roc_event(dev, skb);
+		break;
+	case MCU_UNI_EVENT_MBMC:
+		mt7925_mcu_handle_mbmc_event(dev, skb);
 		break;
 	case MCU_UNI_EVENT_SCAN_DONE:
 		mt7925_mcu_scan_event(dev, skb);
@@ -1410,8 +1476,14 @@ int mt7925_mcu_set_mlo_roc(struct mt792x_phy *phy, struct mt792x_bss_conf *mconf
 		 * EMLSR : 0xff indicates (BAND_AUTO) without DBDC
 		 */
 		req.roc[i].dbdcband = type == MT7925_ROC_REQ_JOIN ? 0xfe : 0xff;
-		if (mt7925_cnm_has_static_band(&mvif->phy->dev->mt76))
-			req.roc[i].dbdcband = mt7925_cnm_band(chan->band);
+
+#define DBDC_BAND_ALL	0xfe
+#define DBDC_BAND_AUTO	0xff
+
+		if (is_mt7927(&phy->dev->mt76) && type == MT7925_ROC_REQ_JOIN)
+			req.roc[i].dbdcband = (chan->band == NL80211_BAND_2GHZ) ? 1 : 0;
+		else
+			req.roc[i].dbdcband = MT7925_ROC_REQ_JOIN ? 0xfe : 0xff;
 
 		if (chan->hw_value < center_ch)
 			req.roc[i].sco = 1; /* SCA */
@@ -1452,10 +1524,10 @@ int mt7925_mcu_set_roc(struct mt792x_phy *phy, struct mt792x_bss_conf *mconf,
 			.dbdcband = 0xff, /* auto */
 		},
 	};
-
-	if (mt7925_cnm_has_static_band(&dev->mt76))
-		req.roc.dbdcband = mt7925_cnm_band(chan->band);
-
+#if 0
+	if (is_mt7927(&dev->mt76))
+		req.roc.dbdcband = mt7925_static_dbdc_band_idx(chan->band);
+#endif
 	if (chan->hw_value < center_ch)
 		req.roc.sco = 1; /* SCA */
 	else if (chan->hw_value > center_ch)
@@ -1504,15 +1576,6 @@ int mt7925_mcu_abort_roc(struct mt792x_phy *phy, struct mt792x_bss_conf *mconf,
 			.dbdcband = 0xff, /* auto*/
 		},
 	};
-
-	if (mt7925_cnm_has_static_band(&dev->mt76)) {
-		vif = container_of((void *)mconf->vif, struct ieee80211_vif,
-				   drv_priv);
-		link_conf = mt792x_vif_to_bss_conf(vif, mconf->link_id);
-		if (link_conf && link_conf->chanreq.oper.chan)
-			req.abort.dbdcband =
-				mt7925_cnm_band(link_conf->chanreq.oper.chan->band);
-	}
 
 	return mt76_mcu_send_msg(&dev->mt76, MCU_UNI_CMD(ROC),
 				 &req, sizeof(req), true);
@@ -2339,6 +2402,15 @@ mt7925_mcu_uni_add_beacon_offload(struct mt792x_dev *dev,
 	}
 	dev_kfree_skb(skb);
 
+dev_info(dev->mt76.dev,
+		 "beacon offload: enable=%u bss_idx=%u type=%u pkt_len=%u tim_ie_pos=%u csa_ie_pos=%u\n",
+		 req.beacon_tlv.enable,
+		 req.hdr.bss_idx,
+		 req.beacon_tlv.type,
+		 le16_to_cpu(req.beacon_tlv.pkt_len),
+		 le16_to_cpu(req.beacon_tlv.tim_ie_pos),
+		 le16_to_cpu(req.beacon_tlv.csa_ie_pos));
+
 	return mt76_mcu_send_msg(&dev->mt76, MCU_UNI_CMD(BSS_INFO_UPDATE),
 				 &req, sizeof(req), true);
 }
@@ -2963,11 +3035,29 @@ int mt7925_mcu_add_bss_info(struct mt792x_phy *phy,
 		mlink = &mconf->vif->sta.deflink;
 	}
 
+dev_info(phy->dev->mt76.dev,
+		 "%s: enable=%d ctx=%p vif_type=%d mconf_link_id=%u bss_idx=%u omac_idx=%u band_idx=%u wmm_idx=%u addr=%pM bssid=%pM link_sta=%p bc_wcid=%u sta_wcid=%u\n",
+		 __func__,
+		 enable,
+		 ctx,
+		 link_conf->vif->type,
+		 mconf->link_id,
+		 mconf->mt76.idx,
+		 mconf->mt76.omac_idx,
+		 mconf->mt76.band_idx,
+		 mconf->mt76.wmm_idx,
+		 link_conf->addr,
+		 link_conf->bssid,
+		 link_sta,
+		 mlink_bc ? mlink_bc->wcid.idx : 0xffff,
+		 mlink ? mlink->wcid.idx : 0xffff);
+
 	return mt7925_mcu_add_bss_info_sta(phy, ctx, link_conf, link_sta,
 					   mlink_bc->wcid.idx, mlink->wcid.idx, enable);
 }
 
-int mt7925_mcu_set_dbdc(struct mt76_phy *phy, bool enable)
+int mt7925_mcu_set_dbdc(struct mt76_phy *phy, bool enable,
+			u8 aa_mode_en, u8 reason)
 {
 	struct mt76_dev *mdev = phy->dev;
 
@@ -2988,13 +3078,16 @@ int mt7925_mcu_set_dbdc(struct mt76_phy *phy, bool enable)
 	conf = (struct mbmc_conf_tlv *)tlv;
 
 	conf->mbmc_en = enable;
-	conf->band = 0; /* unused */
+	conf->aa_mode_en = aa_mode_en;
+	conf->rf_band = 0;
+	conf->reason = reason;
 
 	err = mt76_mcu_skb_send_msg(mdev, skb, MCU_UNI_CMD(SET_DBDC_PARMS),
 				    true);
 
 	return err;
 }
+EXPORT_SYMBOL_GPL(mt7925_mcu_set_dbdc);
 
 static void
 mt7925_mcu_build_scan_ie_tlv(struct mt76_dev *mdev,

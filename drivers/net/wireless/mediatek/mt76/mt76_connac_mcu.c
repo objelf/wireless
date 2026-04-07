@@ -1200,7 +1200,8 @@ int mt76_connac_mcu_uni_add_dev(struct mt76_phy *phy,
 	};
 	int err, idx, cmd, len;
 	void *data;
-
+//	dev_info(dev->dev, "%s: dump stack\n", __func__);
+//	dump_stack();
 	switch (bss_conf->vif->type) {
 	case NL80211_IFTYPE_MESH_POINT:
 	case NL80211_IFTYPE_MONITOR:
@@ -1235,13 +1236,50 @@ int mt76_connac_mcu_uni_add_dev(struct mt76_phy *phy,
 	data = enable ? (void *)&dev_req : (void *)&basic_req;
 	len = enable ? sizeof(dev_req) : sizeof(basic_req);
 
+dev_info(dev->dev,
+	 "%s: %s first cmd=%s len=%zu\n",
+	 __func__, enable ? "enable" : "disable",
+	 enable ? "DEV_INFO_UPDATE" : "BSS_INFO_UPDATE", len);
+
+dev_info(dev->dev,
+	 "%s: %s first cmd=%s dev_info{omac_idx=%u band_idx=%u active=%u link_idx=%u addr=%pM} bss_basic{bss_idx=%u omac_idx=%u band_idx=%u wmm_idx=%u active=%u link_idx=%u hw_bss_idx=%u conn_state=%u conn_type=0x%x}\n",
+	 __func__, enable ? "enable" : "disable",
+	 enable ? "DEV_INFO_UPDATE" : "BSS_INFO_UPDATE",
+	 dev_req.hdr.omac_idx, dev_req.hdr.band_idx,
+	 dev_req.tlv.active, dev_req.tlv.link_idx,
+	 dev_req.tlv.omac_addr,
+	 basic_req.hdr.bss_idx, basic_req.basic.omac_idx,
+	 basic_req.basic.band_idx, basic_req.basic.wmm_idx,
+	 basic_req.basic.active, basic_req.basic.link_idx,
+	 basic_req.basic.hw_bss_idx, basic_req.basic.conn_state,
+	 le32_to_cpu(basic_req.basic.conn_type));
+
 	err = mt76_mcu_send_msg(dev, cmd, data, len, true);
+	pr_err("err = %d\n", err);
 	if (err < 0)
 		return err;
 
 	cmd = enable ? MCU_UNI_CMD(BSS_INFO_UPDATE) : MCU_UNI_CMD(DEV_INFO_UPDATE);
 	data = enable ? (void *)&basic_req : (void *)&dev_req;
 	len = enable ? sizeof(basic_req) : sizeof(dev_req);
+
+dev_info(dev->dev,
+	 "%s: %s second cmd=%s len=%zu\n",
+	 __func__, enable ? "enable" : "disable",
+	 enable ? "BSS_INFO_UPDATE" : "DEV_INFO_UPDATE", len);
+
+dev_info(dev->dev,
+	 "%s: %s second cmd=%s dev_info{omac_idx=%u band_idx=%u active=%u link_idx=%u addr=%pM} bss_basic{bss_idx=%u omac_idx=%u band_idx=%u wmm_idx=%u active=%u link_idx=%u hw_bss_idx=%u conn_state=%u conn_type=0x%x}\n",
+	 __func__, enable ? "enable" : "disable",
+	 enable ? "BSS_INFO_UPDATE" : "DEV_INFO_UPDATE",
+	 dev_req.hdr.omac_idx, dev_req.hdr.band_idx,
+	 dev_req.tlv.active, dev_req.tlv.link_idx,
+	 dev_req.tlv.omac_addr,
+	 basic_req.hdr.bss_idx, basic_req.basic.omac_idx,
+	 basic_req.basic.band_idx, basic_req.basic.wmm_idx,
+	 basic_req.basic.active, basic_req.basic.link_idx,
+	 basic_req.basic.hw_bss_idx, basic_req.basic.conn_state,
+	 le32_to_cpu(basic_req.basic.conn_type));
 
 	return mt76_mcu_send_msg(dev, cmd, data, len, true);
 }

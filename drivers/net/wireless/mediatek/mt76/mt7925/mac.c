@@ -1033,6 +1033,95 @@ out_no_skb:
 	return !!skb;
 }
 
+void mt7925_mac_add_txs_from_event(struct mt792x_dev *dev,
+				   struct mt7925_mcu_tx_done_msg *tx_done)
+{
+	struct mt792x_link_sta *mlink = NULL;
+	struct mt76_dev *mdev = &dev->mt76;
+	struct ieee80211_tx_info *info;
+	struct mt76_wcid *wcid;
+	struct sk_buff_head list;
+	struct sk_buff *skb;
+	u16 wcidx;
+	u8 pid;
+
+pr_info("mt7925 tx_done_msg: wlan_idx=%u pid=%u status=%u seqno=%u tx_count=%u tx_rate=0x%x flag=0x%x tid=%u rsp_rate=%u rate_tbl=%u bw=%u tx_power=%u flush_reason=%u tx_delay=%u timestamp=%u applied=0x%x\n",
+		tx_done->wlan_idx,
+		tx_done->packet_seq,
+		tx_done->status,
+		le16_to_cpu(tx_done->seqno),
+		tx_done->tx_count,
+		le16_to_cpu(tx_done->tx_rate),
+		tx_done->flag,
+		tx_done->tid,
+		tx_done->rsp_rate,
+		tx_done->rate_table_idx,
+		tx_done->bandwidth,
+		tx_done->tx_power,
+		tx_done->flush_reason,
+		le32_to_cpu(tx_done->tx_delay),
+		le32_to_cpu(tx_done->timestamp),
+		le32_to_cpu(tx_done->applied_flag));
+
+	wcidx = tx_done->wlan_idx;
+	pid = tx_done->packet_seq;
+
+	if (pid < MT_PACKET_ID_FIRST)
+		return;
+
+	if (wcidx >= MT792x_WTBL_SIZE)
+		return;
+
+	rcu_read_lock();
+
+	wcid = mt76_wcid_ptr(dev, wcidx);
+	if (!wcid)
+		goto out;
+
+	mlink = container_of(wcid, struct mt792x_link_sta, wcid);
+
+	mt76_tx_status_lock(mdev, &list);
+	skb = mt76_tx_status_skb_get(mdev, wcid, pid, &list);
+	if (!skb)
+		goto out_unlock;
+
+	info = IEEE80211_SKB_CB(skb);
+
+	/* vendor ucStatus == 0 means TX success */
+	if (!tx_done->status)
+		info->flags |= IEEE80211_TX_STAT_ACK;
+
+	info->status.ampdu_len = 1;
+	info->status.ampdu_ack_len =
+		!!(info->flags & IEEE80211_TX_STAT_ACK);
+
+	/*
+	 * Keep rate unknown for now.
+	 *
+	 * UNI_EVENT_TX_DONE_MSG is a structured status event rather than
+	 * raw TXS DWs, so do not try to force-map vendor fields into the
+	 * mt76 TXS parser without verified bit definitions.
+	 */
+	info->status.rates[0].idx = -1;
+
+	mt76_tx_status_skb_done(mdev, skb, &list);
+
+out_unlock:
+	mt76_tx_status_unlock(mdev, &list);
+
+	if (!skb)
+		goto out;
+
+	if (!wcid->sta)
+		goto out;
+
+	mt76_wcid_add_poll(&dev->mt76, &mlink->wcid);
+
+out:
+	rcu_read_unlock();
+}
+
+
 void mt7925_mac_add_txs(struct mt792x_dev *dev, void *data)
 {
 	struct mt792x_link_sta *mlink = NULL;

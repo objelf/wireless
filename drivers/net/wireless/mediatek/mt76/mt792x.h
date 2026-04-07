@@ -32,6 +32,7 @@
 #define MT792x_CHIP_CAP_11D_EN BIT(4)
 #define MT792x_CHIP_CAP_MLO_EN BIT(8)
 #define MT792x_CHIP_CAP_MLO_EML_EN BIT(9)
+#define MT792x_CHIP_CAP_STATIC_DBDC_EN BIT(10)
 
 /* NOTE: used to map mt76_rates. idx may change if firmware expands table */
 #define MT792x_BASIC_RATES_TBL	11

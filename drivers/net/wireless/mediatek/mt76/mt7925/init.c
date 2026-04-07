@@ -118,7 +118,7 @@ static int __mt7925_init_hardware(struct mt792x_dev *dev)
 		goto out;
 
 	if (is_mt7927(&dev->mt76)) {
-		ret = mt7925_mcu_set_dbdc(&dev->mphy, true);
+		ret = mt7925_mcu_set_dbdc(&dev->mphy, true, 0, 0);
 		if (ret) {
 			dev_warn(dev->mt76.dev,
 				 "MT7927 DBDC enable failed: %d\n", ret);
