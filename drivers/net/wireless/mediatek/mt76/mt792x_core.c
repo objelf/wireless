@@ -797,14 +797,13 @@ int mt792x_init_wiphy(struct ieee80211_hw *hw)
 	    (dev->fw_features & MT792x_FW_CAP_NAN)) {
 		wiphy->interface_modes |= BIT(NL80211_IFTYPE_NAN) |
 					  BIT(NL80211_IFTYPE_NAN_DATA);
-		wiphy->nan_supported_bands = BIT(NL80211_BAND_2GHZ);
+		wiphy->nan_supported_bands = BIT(NL80211_BAND_2GHZ) | BIT(NL80211_BAND_5GHZ);
 		wiphy->nan_capa.flags = WIPHY_NAN_FLAGS_CONFIGURABLE_SYNC |
 					WIPHY_NAN_FLAGS_USERSPACE_DE;
 		wiphy->nan_capa.op_mode = NAN_OP_MODE_PHY_MODE_MASK;
 		wiphy->nan_capa.n_antennas = 0x22;
 		wiphy->nan_capa.max_channel_switch_time = 12;
-		wiphy->nan_capa.dev_capabilities = NAN_DEV_CAPA_EXT_KEY_ID_SUPPORTED |
-						   NAN_DEV_CAPA_NDPE_SUPPORTED;
+		wiphy->nan_capa.dev_capabilities = NAN_DEV_CAPA_EXT_KEY_ID_SUPPORTED;
 		wiphy_ext_feature_set(wiphy, NL80211_EXT_FEATURE_SECURE_NAN);
 	}
 

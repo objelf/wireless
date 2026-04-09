@@ -116,6 +116,19 @@ struct mt792x_link_sta {
 	struct ieee80211_link_sta *pri_link;
 };
 
+struct mt792x_sta_nan_sched {
+	spinlock_t lock;
+	u16 committed_dw;
+	u32 sch_idx;
+	bool idx_assigned;
+	unsigned long ndp_ctx_bitmap;
+	u8 ndp_ctx_id;		/* assigned NDP context ID (for NDI sta) */
+	struct {
+		u8 map_id;
+		struct cfg80211_chan_def chans[CFG80211_NAN_SCHED_NUM_TIME_SLOTS];
+	} maps[CFG80211_NAN_MAX_PEER_MAPS];
+};
+
 struct mt792x_sta {
 	struct mt792x_link_sta deflink; /* must be first */
 	struct mt792x_link_sta __rcu *link[IEEE80211_MLD_MAX_NUM_LINKS];
@@ -124,6 +137,9 @@ struct mt792x_sta {
 
 	u16 valid_links;
 	u8 deflink_id;
+
+	/* NAN peer schedule */
+	struct mt792x_sta_nan_sched nan_sched;
 };
 
 DECLARE_EWMA(rssi, 10, 8);
@@ -150,6 +166,14 @@ struct mt792x_nan_conf {
 
 struct mt792x_nan {
 	struct mt792x_nan_conf conf;
+
+	/* Scheduler */
+	spinlock_t state_lock;
+	struct cfg80211_chan_def local_sched[CFG80211_NAN_SCHED_NUM_TIME_SLOTS];
+	u32 seq_id;
+
+	/* Connection index bitmap, up to NAN_MAX_CONN_CFG peers */
+	unsigned long conn_bitmap;
 };
 
 struct mt792x_vif {

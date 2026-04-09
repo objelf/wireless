@@ -16,6 +16,18 @@
 #define NAN_MAX_MASTER_PREFERENCE	255
 #define NAN_DEFAULT_DW_INTERVAL		1
 #define NAN_DEFAULT_DISC_BCN_INTERVAL	100
+#define NAN_PACKET_NUMBER_LEN 		6
+#define WTBL_RESERVED_ENTRY             255
+#define NAN_TOTAL_DW			16
+#define NAN_SUPPORTED_2G_FAW_CH_NUM	4
+#define NAN_SUPPORTED_5G_FAW_CH_NUM	4
+#define NAN_TIMELINE_MGMT_SIZE          2     /* align with FW */
+#define NAN_TIMELINE_MGMT_CHNL_LIST_NUM      \
+    ((NAN_SUPPORTED_2G_FAW_CH_NUM + NAN_SUPPORTED_5G_FAW_CH_NUM) / NAN_TIMELINE_MGMT_SIZE)     /* align with FW */
+#define NAN_NUM_AVAIL_DB 		2
+#define NAN_NDC_ATTRIBUTE_ID_LENGTH	6
+#define NAN_MAX_CONN_CFG 		8
+#define NAN_MAX_NDP_CXT			4
 
 #define MT7925_NAN_CONF_MAX_SIZE					\
 	(sizeof(struct mt7925_nan_common_hdr) +				\
@@ -24,13 +36,52 @@
 	 sizeof(struct mt7925_nan_cluster_id_tlv) +			\
 	 sizeof(struct mt7925_nan_sync_rssi_tlv))
 
+#define MT7925_NAN_AVAIL_MAX_SIZE					\
+	(sizeof(struct mt7925_nan_common_hdr) +				\
+	 sizeof(struct mt7925_nan_avail_ctrl_tlv) +				\
+	 sizeof(struct mt7925_nan_avail_entry_tlv))
+
+#define MT7925_NAN_PEER_MAX_SIZE					\
+	(sizeof(struct mt7925_nan_common_hdr) +				\
+	 sizeof(struct mt7925_nan_sched_manage_peer_rec_tlv) +		\
+	 sizeof(struct mt7925_nan_sched_update_peer_cap_tlv) +		\
+	 sizeof(struct mt7925_nan_sched_update_crb_tlv))
+
+/* NAN Availability Attribute */
+#define NAN_AVAIL_ATTR_ID_OFFSET	0
+#define NAN_AVAIL_ATTR_LEN_OFFSET	1
+#define NAN_AVAIL_SEQ_ID_OFFSET		3
+#define NAN_AVAIL_ATTR_CTRL_OFFSET	4
+
+/* NAN Availability Attribute - Attribute Control Field */
+#define NAN_AVAIL_CTRL_MAPID				GENMASK(3, 0)
+#define NAN_AVAIL_CTRL_COMMIT_CHANGED 		BIT(4)
+#define NAN_AVAIL_CTRL_POTN_CHANGED 		BIT(5)
+#define NAN_AVAIL_CTRL_PUBLIC_AVAIL_CHANGED BIT(6)
+#define NAN_AVAIL_CTRL_NDC_CHANGED 			BIT(7)
+#define NAN_AVAIL_CTRL_CHECK_FOR_CHANGED 	GENMASK(7, 4)
+
+/*5G SubBand FCC spec*/
+#define UNII1_LOWER_BOUND    36
+#define UNII1_UPPER_BOUND    50
+#define UNII3_LOWER_BOUND    149
+#define UNII3_UPPER_BOUND    165
+
 enum nan_uni_cmd_tag {
 	NAN_UNI_CMD_SET_MASTER_PREFERENCE	= 0,
 	NAN_UNI_CMD_ENABLE_REQUEST		= 7,
 	NAN_UNI_CMD_DISABLE_REQUEST		= 8,
+	NAN_UNI_CMD_UPDATE_AVAILABILITY 	= 9,
+	NAN_UNI_CMD_UPDATE_CRB 			= 10,
+	NAN_UNI_CMD_MANAGE_PEER_SCH_RECORD	= 12,
+	NAN_UNI_CMD_MAP_STA_RECORD 		= 13,
+	NAN_UNI_CMD_UPDATE_AVAILABILITY_CTRL	= 20,
+	NAN_UNI_CMD_UPDATE_PEER_CAPABILITY	= 21,
+	NAN_UNI_CMD_CHANGE_NMI_ADDRESS		= 24,
 	NAN_UNI_CMD_SET_DW_INTERVAL		= 26,
 	NAN_UNI_CMD_SET_SYNC_RSSI		= 39,
 	NAN_UNI_CMD_SET_CLUSTER_ID		= 40,
+	NAN_UNI_CMD_KEY_MANAGEMENT		= 53,
 };
 
 enum nan_uni_event_tag {
@@ -41,6 +92,71 @@ enum nan_uni_event_tag {
 enum nan_disc_event_type {
 	NAN_EVENT_ID_DISC_MAC_ADDR		= 0,
 	NAN_EVENT_ID_JOINED_CLUSTER		= 2,
+};
+
+enum NAN_KEY_TYPE
+{
+    NAN_KEY_TYPE_RSVD = 0,
+    NAN_KEY_TYPE_NMI_CXT_MGMT_KEY,
+    NAN_KEY_TYPE_MC_TX_KEY,
+    NAN_KEY_TYPE_MC_RX_KEY,
+    NAN_KEY_TYPE_MC_MGMT_TX_KEY,
+    NAN_KEY_TYPE_MC_MGMT_RX_KEY,
+    NAN_KEY_TYPE_NUM,
+};
+
+enum NAN_KEY_OPERATION
+{
+    NAN_KEY_OP_ACTIVATE = 0,
+    NAN_KEY_OP_INACTIVATE,
+    NAN_KEY_OP_SET_KEY,
+    NAN_KEY_OP_CLS_KEY,
+    NAN_KEY_OP_NUM,
+};
+
+/* NAN 4.0 Table 79. Device Capability attribute format, Supported Bands */
+enum nan_supported_bands {
+       /* RESERVED for TV whitespace = 0 */
+       /* Sub-1 GHz (excluding TV whitespace) = 1 */
+       NAN_SUPPORTED_BAND_ID_2P4G = 2,
+       /* Reserved (for 3.6 GHz) = 3 */
+       NAN_SUPPORTED_BAND_ID_5G = 4,
+       /* Reserved (for 60 GHz) = 5 */
+       /* Reserved (for 45 GHz) = 6 */
+       NAN_PROPRIETARY_BAND_ID_6G = 6, /* from IOT devices */
+       NAN_SUPPORTED_BAND_ID_6G = 7,
+};
+
+enum nan_peer_supported_bands {
+       NAN_SUPPORTED_BN_2G = 0,
+       NAN_SUPPORTED_BN_5G_LOW,
+       NAN_SUPPORTED_BN_5G_HIGH,
+       NAN_SUPPORTED_BN_6G,
+       NAN_SUPPORTED_BN_NUM
+};
+
+union nan_band_ch_ctrl {
+       struct {
+               __le32 type : 1;
+               __le32 reserved : 31;
+       }; /* type to distinguish band or channel */
+
+       struct /* _NanBandCtrl */ { /* NAN_BAND_CH_ENTRY_LIST_TYPE_CHNL:0 */
+               __le32 band_type : 1;
+               __le32 band_rsvd : 23;
+               /* Table 99, same to enum NAN_SUPPORTED_BANDS */
+               __le32 band_id_mask : 8;
+       } /* Band */;
+
+       struct /* _NanChannelCtrl */ { /* NAN_BAND_CH_ENTRY_LIST_TYPE_CHNL:1 */
+               __le32 ch_type : 1;
+               __le32 ch_rsvd : 7;
+               __le32 op_class : 8;
+               __le32 primary_ch : 8;
+               __le32 aux_center_ch : 8;
+       } /* Channel */;
+
+       __le32 raw_data;
 };
 
 struct mt7925_nan_social_ch_scan_params {
@@ -220,6 +336,150 @@ struct mt7925_nan_de_event {
 	u8 master_nmi[ETH_ALEN];
 };
 
+struct mt7925_nan_nmi_addr_tlv {
+	__le16 tag;
+	__le16 len;
+	u8 nmi_addr[ETH_ALEN];
+} __packed __aligned(4);
+
+struct mt7925_nan_key_mgmt_tlv
+{
+    __le16  u2Tag;
+    __le16  u2Len;
+    u8      ucOp;        /* a.k.a enum NAN_KEY_OPERATION */
+    u8      ucKeyType;   /* a.k.a enum NAN_KEY_TYPE  */
+    /**
+    * 0: reserved
+    * 1: NMI Context key for RA/TA=NMI
+    *   (UC Mgmt)
+    * 2: MC Tx key for <local NDI/NMI, NDC ID>
+    *   (MC Data)
+    * 3: MC Rx key for <BC_MAC_ADDR, peer NDI/NMI>
+    *   (MC Mgmt/Data)
+    *******************************************/
+    __le16  u2WtblIdx;
+
+    u8 aucLocalAddr[ETH_ALEN];
+    u8 aucPeerAddr[ETH_ALEN];
+
+    u8 ucNmiKeyIdx;        /* for key type = 1 */
+    u8 ucNdcIdx;        /* for key type = 2 */
+    u8 ucNdiIdx;        /* for key type = 2 */
+    u8 ucMcRxIdx;   /* for key type = 3 */
+
+    u8 fgInit;
+    u8 fgKeyExist;
+    u8 fgIsNmiTk;          /* for key type = 1 */
+    u8 aucRsvd1[1];
+
+    /* for key op = NAN_KEY_SET_KEY/NAN_KEY_CLS_KEY */
+    u8 ucAlgorithmId; /* WPA_ALG_XXX -> CIPHER_SUITE_XXX */
+    u8 ucKeyId;
+    u8 ucKeyLen;
+    u8 ucRsvd;
+    u8 aucKeyMaterial[32];
+    u8 aucKeyRsc[16];
+} __packed __aligned(4);
+
+struct mt7925_nan_avail_ctrl_tlv {
+       __le16 tag;
+       __le16 len;
+       __le16 avail_ctrl;
+       u8 seq_id;
+       u8 reserved[1];
+} __packed __aligned(4);
+
+struct mt7925_nan_ch_timeline {
+       u8 is_vaild;
+       u8 reserved[3];
+
+       union nan_band_ch_ctrl ch_info;
+
+       __le32 num; /* track the number of slot in availability map */
+       __le32 avail_map[NAN_TOTAL_DW];
+};
+
+struct mt7925_nan_avail_entry_tlv {
+       __le16 tag;
+       __le16 len;
+       u8 map_id;
+       u8 is_cond_avail;
+       u8 timeline_idx;
+       u8 is_multi_map;
+
+       struct mt7925_nan_ch_timeline
+               ch_list[NAN_TIMELINE_MGMT_CHNL_LIST_NUM];
+} __packed __aligned(4);
+
+struct mt7925_nan_sched_manage_peer_rec_tlv {
+       __le16 tag;
+       __le16 len;
+       __le32 sch_idx;
+       u8 is_activate;
+       u8 nmi_addr[ETH_ALEN];
+       u8 reserved[1];
+} __packed __aligned(4);
+
+struct mt7925_nan_sched_update_peer_cap_tlv {
+       __le16 tag;
+       __le16 len;
+       __le32 sch_idx;
+       u8 supported_bands;
+       __le16 max_chnl_switch_time;
+       u8 peer_supported_bands;
+} __packed __aligned(4);
+
+struct mt7925_nan_sched_timeline {
+       u8 map_id; /* peer MapId or local generated MapId */
+       u8 local_map_id; /* TX NDC attribute, peer MapId ?!= local MapId */
+       u8 reserved[2];
+       union {
+               __le32 avail_map[NAN_TOTAL_DW];
+               u8 avail_block[NAN_TOTAL_DW * 4];
+       };
+};
+
+struct mt7925_nan_sched_faw_ndc_timeline {
+       __le32 avail_map[NAN_TOTAL_DW];
+};
+
+struct mt7925_nan_sched_ndc_ctrl {
+       u8 is_valid;
+       u8 ndc_id[NAN_NDC_ATTRIBUTE_ID_LENGTH];
+       u8 ndc_idx;
+       struct mt7925_nan_sched_timeline timeline[NAN_NUM_AVAIL_DB];
+};
+
+struct mt7925_nan_sched_update_crb_tlv {
+       __le16 tag;
+       __le16 len;
+       __le32 sch_idx;
+       u8 is_use_data_path :1,
+               avail_6g_format :2,
+               rsvd :5;
+       u8 is_use_ranging;
+       u8 reserved[2];
+       struct mt7925_nan_sched_timeline
+                       comm_ranging_timeline[NAN_TIMELINE_MGMT_SIZE];
+       struct mt7925_nan_sched_timeline
+                       comm_faw_timeline[NAN_TIMELINE_MGMT_SIZE];
+       struct mt7925_nan_sched_ndc_ctrl comm_ndc_ctrl;
+       struct mt7925_nan_sched_faw_ndc_timeline
+                       faw_ndc_timeline[NAN_TIMELINE_MGMT_SIZE];
+} __packed __aligned(4);
+
+struct mt7925_nan_sched_map_sta_rec_tlv {
+		__le16 tag;
+       	__le16 len;
+		u8 nmi_addr[ETH_ALEN];
+		u8 sta_rec_idx;
+		u8 ndp_ctx_id;
+
+		__le32 role_idx;
+		u8 ndi_addr[ETH_ALEN];
+		u8 reserved[2];
+} __packed __aligned(4);
+
 int mt7925_nan_enable(struct ieee80211_vif *vif,
 		      struct mt792x_dev *dev,
 		      struct cfg80211_nan_conf *conf);
@@ -232,4 +492,26 @@ int mt7925_nan_change_configure(struct ieee80211_vif *vif,
 				struct cfg80211_nan_conf *conf);
 
 void mt7925_nan_mcu_event(struct mt792x_dev *dev, struct sk_buff *skb);
+
+int nanDevSetNmiAddress(struct ieee80211_vif *vif,
+			struct mt792x_dev *dev,
+			const u8 *mac_address);
+
+int nanDevSetNdiAddress(struct ieee80211_vif *vif,
+			struct mt792x_dev *dev,
+			const u8 *mac_address, u8 ndi_idx);
+
+void mt7925_nan_local_sched_changed(struct mt792x_dev *dev,
+                struct ieee80211_vif *vif);
+
+int mt792x_nan_set_peer_schedule(struct mt792x_dev *dev,
+                               struct ieee80211_sta *sta);
+
+int mt792x_nan_set_peer_rec(struct mt76_dev *mdev,
+				 struct ieee80211_sta *sta);
+
+int mt792x_nan_map_sta_rec(struct mt76_dev *mdev,
+			   struct ieee80211_vif *vif,
+			   struct ieee80211_sta *sta);
+
 #endif

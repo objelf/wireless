@@ -1219,17 +1219,26 @@ int mt7925_mac_sta_event(struct mt76_dev *mdev, struct ieee80211_vif *vif,
 {
 	struct ieee80211_link_sta *link_sta = &sta->deflink;
 
-	if (ev != MT76_STA_EVENT_ASSOC)
-		return 0;
+	switch (ev) {
+	case MT76_STA_EVENT_ASSOC:
+		if (ieee80211_vif_is_mld(vif)) {
+			struct mt792x_sta *msta =
+				(struct mt792x_sta *)sta->drv_priv;
 
-	if (ieee80211_vif_is_mld(vif)) {
-		struct mt792x_sta *msta = (struct mt792x_sta *)sta->drv_priv;
+			link_sta = mt792x_sta_to_link_sta(vif, sta,
+							  msta->deflink_id);
+			mt7925_mac_set_links(mdev, vif);
+		}
 
-		link_sta = mt792x_sta_to_link_sta(vif, sta, msta->deflink_id);
-		mt7925_mac_set_links(mdev, vif);
+		mt7925_mac_link_sta_assoc(mdev, vif, link_sta);
+		break;
+	case MT76_STA_EVENT_AUTHORIZE:
+		if (vif->type == NL80211_IFTYPE_NAN_DATA)
+			mt792x_nan_map_sta_rec(mdev, vif, sta);
+		break;
+	default:
+		break;
 	}
-
-	mt7925_mac_link_sta_assoc(mdev, vif, link_sta);
 
 	return 0;
 }
@@ -1353,6 +1362,33 @@ void mt7925_mac_sta_remove(struct mt76_dev *mdev, struct ieee80211_vif *vif,
 	struct mt792x_dev *dev = container_of(mdev, struct mt792x_dev, mt76);
 	struct mt792x_sta *msta = (struct mt792x_sta *)sta->drv_priv;
 	struct mt792x_vif *mvif = (struct mt792x_vif *)vif->drv_priv;
+
+	/* Release NAN peer record before tearing down the STA. */
+	if (vif->type == NL80211_IFTYPE_NAN ||
+	    vif->type == NL80211_IFTYPE_NAN_DATA) {
+		int ret = mt792x_nan_set_peer_rec(mdev, sta);
+
+		if (ret)
+			dev_err(mdev->dev,
+				"NAN: failed to deactivate peer record: %d\n",
+				ret);
+	}
+
+	/* Release NDP context ID for NAN_DATA sta. */
+	if (vif->type == NL80211_IFTYPE_NAN_DATA) {
+		struct ieee80211_sta *nmi_sta;
+
+		rcu_read_lock();
+		nmi_sta = rcu_dereference(sta->nmi);
+		if (nmi_sta) {
+			struct mt792x_sta *nmi_msta =
+				(struct mt792x_sta *)nmi_sta->drv_priv;
+
+			clear_bit(msta->nan_sched.ndp_ctx_id,
+				  &nmi_msta->nan_sched.ndp_ctx_bitmap);
+		}
+		rcu_read_unlock();
+	}
 
 	if (ieee80211_vif_is_mld(vif)) {
 		mt7925_mac_sta_remove_links(dev, vif, sta, msta->valid_links);
@@ -2386,6 +2422,7 @@ void mt7925_csa_work(struct work_struct *work)
 	dev = mvif->phy->dev;
 	vif = container_of((void *)mvif, struct ieee80211_vif, drv_priv);
 
+
 	if (ieee80211_vif_is_mld(vif))
 		return;
 
@@ -2554,6 +2591,27 @@ static int mt7925_nan_change_conf(struct ieee80211_hw *hw,
 
 	err = mt7925_nan_change_configure(vif, dev, conf);
 
+	if (changes & BSS_CHANGED_NAN_LOCAL_SCHED) {
+		dev_info(dev->mt76.dev, "%s: local schedule changed\n", __func__);
+		mt7925_nan_local_sched_changed(dev, vif);
+	}
+
+	mt792x_mutex_release(dev);
+
+	return err;
+}
+
+static int mt7925_nan_peer_sched_changed(struct ieee80211_hw *hw,
+				      struct ieee80211_sta *sta)
+{
+	struct mt792x_dev *dev = mt792x_hw_dev(hw);
+	int err = 0;
+
+	mt792x_mutex_acquire(dev);
+
+	dev_info(dev->mt76.dev, "%s\n", __func__);
+	err = mt792x_nan_set_peer_schedule(dev, sta);
+
 	mt792x_mutex_release(dev);
 
 	return err;
@@ -2633,6 +2691,7 @@ const struct ieee80211_ops mt7925_ops = {
 	.start_nan = mt7925_start_nan,
 	.stop_nan = mt7925_stop_nan,
 	.nan_change_conf = mt7925_nan_change_conf,
+	.nan_peer_sched_changed = mt7925_nan_peer_sched_changed,
 };
 EXPORT_SYMBOL_GPL(mt7925_ops);
 
