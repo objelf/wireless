@@ -352,6 +352,12 @@ mt7921_add_interface(struct ieee80211_hw *hw, struct ieee80211_vif *vif)
 
 	INIT_WORK(&mvif->csa_work, mt7921_csa_work);
 	timer_setup(&mvif->csa_timer, mt792x_csa_timer, 0);
+
+	dev_info(dev->mt76.dev,
+		 "%s: vif=%pM type=%d idx=%u omac=%u wmm=%u band=%u\n",
+		 __func__, vif->addr, vif->type,
+		 mvif->bss_conf.mt76.idx, mvif->bss_conf.mt76.omac_idx,
+		 mvif->bss_conf.mt76.wmm_idx, mvif->bss_conf.mt76.band_idx);
 out:
 	mt792x_mutex_release(dev);
 
@@ -363,6 +369,11 @@ static void mt7921_roc_iter(void *priv, u8 *mac,
 {
 	struct mt792x_vif *mvif = (struct mt792x_vif *)vif->drv_priv;
 	struct mt792x_phy *phy = priv;
+
+dev_info(phy->dev->mt76.dev,
+		 "%s: vif=%pM type=%d token=%u chanctx=%p band=%u abort roc\n",
+		 __func__, vif->addr, vif->type, phy->roc_token_id,
+		 mvif->bss_conf.mt76.ctx, mvif->bss_conf.mt76.band_idx);
 
 	mt7921_mcu_abort_roc(phy, mvif, phy->roc_token_id);
 }
@@ -390,11 +401,11 @@ void mt7921_roc_work(struct work_struct *work)
 	phy = (struct mt792x_phy *)container_of(work, struct mt792x_phy,
 						roc_work);
 
-	mt792x_mutex_acquire(phy->dev);
-	if (!test_and_clear_bit(MT76_STATE_ROC, &phy->mt76->state)) {
-		mt792x_mutex_release(phy->dev);
+	if (!test_and_clear_bit(MT76_STATE_ROC, &phy->mt76->state))
 		return;
-	}
+	
+	mt792x_mutex_acquire(phy->dev);
+
 	ieee80211_iterate_active_interfaces(phy->mt76->hw,
 					    IEEE80211_IFACE_ITER_RESUME_ALL,
 					    mt7921_roc_iter, phy);
@@ -425,8 +436,16 @@ static int mt7921_set_roc(struct mt792x_phy *phy,
 {
 	int err;
 
-	if (test_and_set_bit(MT76_STATE_ROC, &phy->mt76->state))
-		return -EBUSY;
+	if (test_and_set_bit(MT76_STATE_ROC, &phy->mt76->state)) {
+		if (type != MT7921_ROC_REQ_JOIN)
+			return -EBUSY;
+		phy->roc_grant = false;
+		err = mt7921_mcu_set_roc(phy, vif, chan, duration, type,
+				phy->roc_token_id);
+		if (!err && !wait_event_timeout(phy->roc_wait, phy->roc_grant, HZ))
+			err = -ETIMEDOUT;
+		return err;
+	}
 
 	phy->roc_grant = false;
 
@@ -455,10 +474,15 @@ static int mt7921_remain_on_channel(struct ieee80211_hw *hw,
 {
 	struct mt792x_vif *mvif = (struct mt792x_vif *)vif->drv_priv;
 	struct mt792x_phy *phy = mt792x_hw_phy(hw);
+	enum mt7921_roc_req roc_type;
 	int err;
 
+	/* MGMT_TX needs fast off-channel grant */
+	roc_type = (type == IEEE80211_ROC_TYPE_MGMT_TX) ?
+		MT7921_ROC_REQ_JOIN : MT7921_ROC_REQ_ROC;
+
 	mt792x_mutex_acquire(phy->dev);
-	err = mt7921_set_roc(phy, mvif, chan, duration, MT7921_ROC_REQ_ROC);
+	err = mt7921_set_roc(phy, mvif, chan, duration, roc_type);
 	mt792x_mutex_release(phy->dev);
 
 	return err;
@@ -701,6 +725,12 @@ static void mt7921_bss_info_changed(struct ieee80211_hw *hw,
 
 	mt792x_mutex_acquire(dev);
 
+	dev_info(dev->mt76.dev,
+		 "%s: vif=%pM type=%d changed=0x%016llx assoc=%d beacon=%d qos=%d bssid=%pM\n",
+		 __func__, vif->addr, vif->type,
+		 changed, vif->cfg.assoc, info->enable_beacon,
+		 info->qos, info->bssid);
+
 	if (changed & BSS_CHANGED_ERP_SLOT) {
 		int slottime = info->use_short_slot ? 9 : 20;
 
@@ -726,6 +756,9 @@ static void mt7921_bss_info_changed(struct ieee80211_hw *hw,
 		mt7921_mcu_set_rssimonitor(dev, vif);
 
 	if (changed & BSS_CHANGED_ASSOC) {
+		dev_info(dev->mt76.dev,
+			 "%s: BSS_CHANGED_ASSOC assoc=%d bssid=%pM\n",
+			 __func__, vif->cfg.assoc, info->bssid);
 		mt7921_mcu_sta_update(dev, NULL, vif, true,
 				      MT76_STA_INFO_STATE_ASSOC);
 		mt7921_mcu_set_beacon_filter(dev, vif, vif->cfg.assoc);
@@ -838,6 +871,11 @@ int mt7921_mac_sta_add(struct mt76_dev *mdev, struct ieee80211_vif *vif,
 	mt7921_mac_wtbl_update(dev, idx,
 			       MT_WTBL_UPDATE_ADM_COUNT_CLEAR);
 
+	dev_info(dev->mt76.dev,
+		 "%s: vif=%pM sta=%pM aid=%u wcid=%u band=%u\n",
+		 __func__, vif->addr, sta->addr, sta->aid,
+		 msta->deflink.wcid.idx, msta->deflink.wcid.phy_idx);
+
 	ret = mt7921_mcu_sta_update(dev, sta, vif, true,
 				    MT76_STA_INFO_STATE_NONE);
 	if (ret)
@@ -861,14 +899,23 @@ int mt7921_mac_sta_event(struct mt76_dev *mdev, struct ieee80211_vif *vif,
 	if (sta->aid > MT7921_MAX_AID)
 		return -ENOENT;
 
+	dev_info(dev->mt76.dev,
+		 "%s: vif=%pM sta=%pM ev=%d aid=%u\n",
+		 __func__, vif->addr, sta->addr, ev, sta->aid);
+
 	if (ev != MT76_STA_EVENT_ASSOC)
 	    return 0;
 
 	mt792x_mutex_acquire(dev);
 
-	if (vif->type == NL80211_IFTYPE_STATION && !sta->tdls)
-		mt76_connac_mcu_uni_add_bss(&dev->mphy, vif, &mvif->sta.deflink.wcid,
-					    true, mvif->bss_conf.mt76.ctx);
+	if (vif->type == NL80211_IFTYPE_STATION && !sta->tdls) {
+		int ret;
+
+		ret = mt76_connac_mcu_uni_add_bss(&dev->mphy, vif,
+					 &mvif->sta.deflink.wcid,
+					 true, mvif->bss_conf.mt76.ctx);
+		dev_info(dev->mt76.dev, "%s: add_bss ret=%d\n", __func__, ret);
+	}
 
 	ewma_avg_signal_init(&msta->deflink.avg_ack_signal);
 
@@ -876,6 +923,9 @@ int mt7921_mac_sta_event(struct mt76_dev *mdev, struct ieee80211_vif *vif,
 			       MT_WTBL_UPDATE_ADM_COUNT_CLEAR);
 	memset(msta->deflink.airtime_ac, 0, sizeof(msta->deflink.airtime_ac));
 
+	dev_info(dev->mt76.dev,
+		 "%s: sta_update(ASSOC) wcid=%u\n",
+		 __func__, msta->deflink.wcid.idx);
 	mt7921_mcu_sta_update(dev, sta, vif, true, MT76_STA_INFO_STATE_ASSOC);
 
 	mt792x_mutex_release(dev);
@@ -889,6 +939,10 @@ void mt7921_mac_sta_remove(struct mt76_dev *mdev, struct ieee80211_vif *vif,
 {
 	struct mt792x_dev *dev = container_of(mdev, struct mt792x_dev, mt76);
 	struct mt792x_sta *msta = (struct mt792x_sta *)sta->drv_priv;
+
+	dev_info(dev->mt76.dev,
+		 "%s: vif=%pM sta=%pM wcid=%u\n",
+		 __func__, vif->addr, sta->addr, msta->deflink.wcid.idx);
 
 	mt7921_roc_abort_sync(dev);
 	mt76_connac_free_pending_tx_skbs(&dev->pm, &msta->deflink.wcid);
@@ -996,6 +1050,11 @@ static int mt7921_sta_state(struct ieee80211_hw *hw,
 			    enum ieee80211_sta_state new_state)
 {
 	struct mt792x_dev *dev = mt792x_hw_dev(hw);
+
+	dev_info(dev->mt76.dev,
+		 "%s: vif=%pM sta=%pM old=%d new=%d aid=%u tdls=%d\n",
+		 __func__, vif->addr, sta->addr,
+		 old_state, new_state, sta->aid, sta->tdls);
 
 	if (dev->pm.ds_enable) {
 		mt792x_mutex_acquire(dev);
@@ -1418,12 +1477,32 @@ static void mt7921_mgd_prepare_tx(struct ieee80211_hw *hw,
 {
 	struct mt792x_vif *mvif = (struct mt792x_vif *)vif->drv_priv;
 	struct mt792x_dev *dev = mt792x_hw_dev(hw);
+	int ret;
 	u16 duration = info->duration ? info->duration :
 		       jiffies_to_msecs(HZ);
 
+	if (info->subtype == IEEE80211_STYPE_DEAUTH ||
+	    info->subtype == IEEE80211_STYPE_DISASSOC) {
+		dev_info(dev->mt76.dev,
+			 "%s: skip ROC for subtype=0x%x vif=%pM\n",
+			 __func__, info->subtype, vif->addr);
+		return;
+	}
+
+	dev_info(dev->mt76.dev,
+		 "%s: vif=%pM type=%d duration=%u chan=%u freq=%u ctx=%p\n",
+		 __func__, vif->addr, vif->type, duration,
+		 mvif->bss_conf.mt76.ctx && mvif->bss_conf.mt76.ctx->def.chan ?
+		 mvif->bss_conf.mt76.ctx->def.chan->hw_value : 0,
+		 mvif->bss_conf.mt76.ctx && mvif->bss_conf.mt76.ctx->def.chan ?
+		 mvif->bss_conf.mt76.ctx->def.chan->center_freq : 0,
+		 mvif->bss_conf.mt76.ctx);
+
 	mt792x_mutex_acquire(dev);
-	mt7921_set_roc(mvif->phy, mvif, mvif->bss_conf.mt76.ctx->def.chan, duration,
-		       MT7921_ROC_REQ_JOIN);
+	ret = mt7921_set_roc(mvif->phy, mvif, mvif->bss_conf.mt76.ctx->def.chan,
+			    duration, MT7921_ROC_REQ_JOIN);
+	dev_info(dev->mt76.dev, "%s: set_roc ret=%d token=%u\n",
+		 __func__, ret, mvif->phy->roc_token_id);
 	mt792x_mutex_release(dev);
 }
 
@@ -1432,7 +1511,11 @@ static void mt7921_mgd_complete_tx(struct ieee80211_hw *hw,
 				   struct ieee80211_prep_tx_info *info)
 {
 	struct mt792x_vif *mvif = (struct mt792x_vif *)vif->drv_priv;
+	struct mt792x_dev *dev = mt792x_hw_dev(hw);
 
+	dev_info(dev->mt76.dev,
+		 "%s: vif=%pM type=%d\n",
+		 __func__, vif->addr, vif->type);
 	mt7921_abort_roc(mvif->phy, mvif);
 }
 

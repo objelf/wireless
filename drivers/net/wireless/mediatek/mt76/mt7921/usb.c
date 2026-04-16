@@ -214,6 +214,10 @@ static int mt7921u_probe(struct usb_interface *usb_intf,
 	if (ret < 0)
 		goto error;
 
+	mdev->usb.tx_aggr = true;
+	dev_info(mdev->dev,
+		 "mt7921u: enable USB tx aggr for data queues only\n");
+
 	mdev->rev = (mt76_rr(dev, MT_HW_CHIPID) << 16) |
 		    (mt76_rr(dev, MT_HW_REV) & 0xff);
 	dev_dbg(mdev->dev, "ASIC revision: %04x\n", mdev->rev);
@@ -242,6 +246,7 @@ static int mt7921u_probe(struct usb_interface *usb_intf,
 
 	hw = mt76_hw(dev);
 	/* check hw sg support in order to enable AMSDU */
+	mdev->usb.sg_en = false;
 	hw->max_tx_fragments = mdev->usb.sg_en ? MT_HW_TXP_MAX_BUF_NUM : 1;
 
 	ret = mt7921_register_device(dev);

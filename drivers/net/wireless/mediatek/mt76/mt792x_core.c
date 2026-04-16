@@ -472,6 +472,13 @@ int mt792x_assign_vif_chanctx(struct ieee80211_hw *hw,
 	mutex_lock(&dev->mt76.mutex);
 	mvif->bss_conf.mt76.ctx = ctx;
 	mctx->bss_conf = &mvif->bss_conf;
+	dev_info(dev->mt76.dev,
+		 "%s: vif=%pM ctx=%p freq=%u width=%d chan=%u band=%u\n",
+		 __func__, vif->addr, ctx,
+		 ctx && ctx->def.chan ? ctx->def.chan->center_freq : 0,
+		 ctx ? ctx->def.width : 0,
+		 ctx && ctx->def.chan ? ctx->def.chan->hw_value : 0,
+		 ctx && ctx->def.chan ? ctx->def.chan->band : 0);
 	mutex_unlock(&dev->mt76.mutex);
 
 	return 0;

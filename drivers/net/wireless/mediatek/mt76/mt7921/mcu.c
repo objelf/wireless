@@ -149,6 +149,7 @@ mt7921_mcu_uni_roc_event(struct mt792x_dev *dev, struct sk_buff *skb)
 	rxd = (struct mt76_connac2_mcu_rxd *)skb->data;
 	grant = (struct mt7921_roc_grant_tlv *)(rxd->tlv + 4);
 
+
 	/* should never happen */
 	WARN_ON_ONCE((le16_to_cpu(grant->tag) != UNI_EVENT_ROC_GRANT));
 
@@ -157,7 +158,18 @@ mt7921_mcu_uni_roc_event(struct mt792x_dev *dev, struct sk_buff *skb)
 
 	dev->phy.roc_grant = true;
 	wake_up(&dev->phy.roc_wait);
+
 	duration = le32_to_cpu(grant->max_interval);
+
+dev_info(dev->mt76.dev,
+		 "%s: grant tag=0x%x reqtype=%u token=%u dbdc_band=%u primary_chan=%u duration = %d\n",
+		 __func__,
+		 le16_to_cpu(grant->tag),
+		 grant->reqtype,
+		 grant->tokenid,
+		 grant->dbdcband,
+		 grant->primarychannel, duration);
+
 	mod_timer(&dev->phy.roc_timer,
 		  jiffies + msecs_to_jiffies(duration));
 }
@@ -855,7 +867,8 @@ int mt7921_mcu_abort_roc(struct mt792x_phy *phy, struct mt792x_vif *vif,
 			.dbdcband = 0xff, /* auto*/
 		},
 	};
-
+pr_err("send roc abort\n");
+dump_stack();
 	return mt76_mcu_send_msg(&dev->mt76, MCU_UNI_CMD(ROC),
 				 &req, sizeof(req), false);
 }
