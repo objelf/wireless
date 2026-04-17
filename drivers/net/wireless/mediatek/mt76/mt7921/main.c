@@ -1426,6 +1426,14 @@ static void mt7921_mgd_prepare_tx(struct ieee80211_hw *hw,
 	u16 duration = info->duration ? info->duration :
 		       jiffies_to_msecs(HZ);
 
+	if (info->subtype == IEEE80211_STYPE_DEAUTH ||
+	    info->subtype == IEEE80211_STYPE_DISASSOC) {
+		dev_info(dev->mt76.dev,
+			 "%s: skip ROC for subtype=0x%x vif=%pM\n",
+			 __func__, info->subtype, vif->addr);
+		return;
+	}
+
 	mt792x_mutex_acquire(dev);
 	mt7921_set_roc(mvif->phy, mvif, mvif->bss_conf.mt76.ctx->def.chan, duration,
 		       MT7921_ROC_REQ_JOIN);
