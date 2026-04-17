@@ -390,11 +390,11 @@ void mt7921_roc_work(struct work_struct *work)
 	phy = (struct mt792x_phy *)container_of(work, struct mt792x_phy,
 						roc_work);
 
-	mt792x_mutex_acquire(phy->dev);
-	if (!test_and_clear_bit(MT76_STATE_ROC, &phy->mt76->state)) {
-		mt792x_mutex_release(phy->dev);
+	if (!test_and_clear_bit(MT76_STATE_ROC, &phy->mt76->state))
 		return;
-	}
+	
+	mt792x_mutex_acquire(phy->dev);
+
 	ieee80211_iterate_active_interfaces(phy->mt76->hw,
 					    IEEE80211_IFACE_ITER_RESUME_ALL,
 					    mt7921_roc_iter, phy);
@@ -425,8 +425,16 @@ static int mt7921_set_roc(struct mt792x_phy *phy,
 {
 	int err;
 
-	if (test_and_set_bit(MT76_STATE_ROC, &phy->mt76->state))
-		return -EBUSY;
+	if (test_and_set_bit(MT76_STATE_ROC, &phy->mt76->state)) {
+		if (type != MT7921_ROC_REQ_JOIN)
+			return -EBUSY;
+		phy->roc_grant = false;
+		err = mt7921_mcu_set_roc(phy, vif, chan, duration, type,
+				phy->roc_token_id);
+		if (!err && !wait_event_timeout(phy->roc_wait, phy->roc_grant, HZ))
+			err = -ETIMEDOUT;
+		return err;
+	}
 
 	phy->roc_grant = false;
 
