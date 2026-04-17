@@ -455,10 +455,15 @@ static int mt7921_remain_on_channel(struct ieee80211_hw *hw,
 {
 	struct mt792x_vif *mvif = (struct mt792x_vif *)vif->drv_priv;
 	struct mt792x_phy *phy = mt792x_hw_phy(hw);
+	enum mt7921_roc_req roc_type;
 	int err;
 
+	/* MGMT_TX needs fast off-channel grant */
+	roc_type = (type == IEEE80211_ROC_TYPE_MGMT_TX) ?
+		MT7921_ROC_REQ_JOIN : MT7921_ROC_REQ_ROC;
+
 	mt792x_mutex_acquire(phy->dev);
-	err = mt7921_set_roc(phy, mvif, chan, duration, MT7921_ROC_REQ_ROC);
+	err = mt7921_set_roc(phy, mvif, chan, duration, roc_type);
 	mt792x_mutex_release(phy->dev);
 
 	return err;
