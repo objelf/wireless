@@ -675,6 +675,8 @@ struct mt76_usb {
 	u8 in_ep[__MT_EP_IN_MAX];
 	bool sg_en;
 	bool tx_aggr;
+	bool rx_aggr;
+	u32 rx_aggr_buf_size;
 
 	struct mt76u_mcu {
 		u8 *data;

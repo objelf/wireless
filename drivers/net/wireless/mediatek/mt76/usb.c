@@ -378,6 +378,17 @@ mt76u_refill_rx(struct mt76_dev *dev, struct mt76_queue *q,
 	enum mt76_rxq_id qid = q - &dev->q_rx[MT_RXQ_MAIN];
 	int offset;
 
+	if (qid == MT_RXQ_MAIN && dev->usb.rx_aggr) {
+		urb->transfer_buffer_length = q->buf_size;
+		urb->transfer_buffer = mt76_get_page_pool_buf(q, &offset,
+					      q->buf_size);
+
+		urb->actual_length = 0;
+		urb->num_sgs = 0;
+		urb->sg = NULL;
+		return urb->transfer_buffer ? 0 : -ENOMEM;
+	}
+
 	if (qid == MT_RXQ_MAIN && dev->usb.sg_en)
 		return mt76u_fill_rx_sg(dev, q, urb, nsgs);
 
@@ -489,6 +500,72 @@ mt76u_get_rx_entry_len(struct mt76_dev *dev, u8 *data,
 	    (dma_len & 0x3))
 		return -EINVAL;
 	return dma_len;
+}
+
+#define MT76U_RX_AGGR_PAD	4
+
+static int
+mt76u_get_rx_aggr_entry_len(struct mt76_dev *dev, u8 *data, u32 data_len)
+{
+	int len;
+
+	len = mt76u_get_rx_entry_len(dev, data, data_len);
+	if (len < 0)
+		return len;
+
+	return ALIGN(len, 8) + MT76U_RX_AGGR_PAD;
+}
+
+static int
+mt76u_process_rx_entry_aggr(struct mt76_dev *dev, struct urb *urb,
+				    int buf_size)
+{
+	u8 *data = urb->transfer_buffer;
+	int rem = urb->actual_length;
+	int pkts = 0;
+
+	if (!test_bit(MT76_STATE_INITIALIZED, &dev->phy.state))
+		return 0;
+
+	dev_info(dev->dev, "rx aggr urb: actual_len=%u buf_size=%d\n",
+		urb->actual_length, buf_size);
+
+	while (rem > MT76U_RX_AGGR_PAD) {
+		struct sk_buff *skb;
+		int len, agg_len;
+
+		len = mt76u_get_rx_entry_len(dev, data, rem);
+		if (len < 0) {
+			dev_warn_ratelimited(dev->dev,
+				"rx aggr: invalid pkt len=%d rem=%d\n", len, rem);
+ 			break;
+		}
+
+		agg_len = mt76u_get_rx_aggr_entry_len(dev, data, rem);
+		if (agg_len < len || agg_len > rem)
+			break;
+
+		dev_info(dev->dev,
+			"rx aggr pkt: pkt_len=%d agg_len=%d rem=%d\n",
+			len, agg_len, rem);
+
+		if (!dev->drv->rx_check || dev->drv->rx_check(dev, data, len)) {
+			skb = alloc_skb(len, GFP_ATOMIC);
+			if (!skb)
+				break;
+
+			skb_put_data(skb, data, len);
+			dev->drv->rx_skb(dev, MT_RXQ_MAIN, skb, NULL);
+			pkts++;
+		}
+
+		data += agg_len;
+		rem -= agg_len;
+	}
+
+	dev_info(dev->dev, "rx aggr done: pkts=%d rem=%d\n", pkts, rem);
+
+	return pkts ? 1 : 0;
 }
 
 static struct sk_buff *
@@ -632,7 +709,19 @@ mt76u_process_rx_queue(struct mt76_dev *dev, struct mt76_queue *q)
 		if (!urb)
 			break;
 
+		if (qid == MT_RXQ_MAIN && dev->usb.rx_aggr) {
+ 			count = mt76u_process_rx_entry_aggr(dev, urb, q->buf_size);
+			/* RX aggr path copies packets out of the shared buffer, so
+			 * the same page-pool backed buffer can be resubmitted directly.
+			 */
+			err = mt76u_submit_rx_buf(dev, qid, urb);
+			if (err < 0)
+				break;
+			continue;
+		}
+
 		count = mt76u_process_rx_entry(dev, urb, q->buf_size);
+
 		if (count > 0) {
 			err = mt76u_refill_rx(dev, q, urb, count);
 			if (err < 0)
@@ -685,11 +774,13 @@ mt76u_alloc_rx_queue(struct mt76_dev *dev, enum mt76_rxq_id qid)
 	struct mt76_queue *q = &dev->q_rx[qid];
 	int i, err;
 
+	spin_lock_init(&q->lock);
+	q->buf_size = (qid == MT_RXQ_MAIN && dev->usb.rx_aggr) ?
+		      dev->usb.rx_aggr_buf_size : PAGE_SIZE;
 	err = mt76_create_page_pool(dev, q);
 	if (err)
 		return err;
 
-	spin_lock_init(&q->lock);
 	q->entry = devm_kcalloc(dev->dev,
 				MT_NUM_RX_ENTRIES, sizeof(*q->entry),
 				GFP_KERNEL);
@@ -697,7 +788,6 @@ mt76u_alloc_rx_queue(struct mt76_dev *dev, enum mt76_rxq_id qid)
 		return -ENOMEM;
 
 	q->ndesc = MT_NUM_RX_ENTRIES;
-	q->buf_size = PAGE_SIZE;
 
 	for (i = 0; i < q->ndesc; i++) {
 		err = mt76u_rx_urb_alloc(dev, q, &q->entry[i]);
@@ -717,6 +807,7 @@ EXPORT_SYMBOL_GPL(mt76u_alloc_mcu_queue);
 static void
 mt76u_free_rx_queue(struct mt76_dev *dev, struct mt76_queue *q)
 {
+	enum mt76_rxq_id qid = q - &dev->q_rx[MT_RXQ_MAIN];
 	int i;
 
 	for (i = 0; i < q->ndesc; i++) {

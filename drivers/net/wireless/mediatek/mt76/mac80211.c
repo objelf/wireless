@@ -639,6 +639,12 @@ int mt76_create_page_pool(struct mt76_dev *dev, struct mt76_queue *q)
 		break;
 	}
 
+	if (mt76_is_usb(dev) && idx == MT_RXQ_MAIN &&
+	    dev->usb.rx_aggr && q->buf_size > PAGE_SIZE) {
+		pp_params.order = get_order(q->buf_size);
+		pp_params.pool_size = 256;
+	}
+
 	if (mt76_is_mmio(dev)) {
 		/* rely on page_pool for DMA mapping */
 		pp_params.flags |= PP_FLAG_DMA_MAP | PP_FLAG_DMA_SYNC_DEV;

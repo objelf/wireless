@@ -10,6 +10,7 @@
 
 #include "mt7921.h"
 #include "mcu.h"
+#include "../mt792x_regs.h"
 #include "../mt76_connac2_mac.h"
 
 static const struct usb_device_id mt7921u_device_table[] = {
@@ -86,6 +87,30 @@ static int mt7921u_mcu_init(struct mt792x_dev *dev)
 	return 0;
 }
 
+#define MT7921U_RX_AGG_LIMIT_KB		32
+#define MT7921U_RX_AGG_TIMEOUT_US	100
+#define MT7921U_RX_AGG_PKT_LIMIT	30
+#define MT7921U_RX_AGG_BUF_SIZE		(36 * 1024)
+
+static void mt7921u_rx_aggr_enable(struct mt792x_dev *dev, bool enable)
+{
+	if (!enable)
+		return;
+
+	dev_info(dev->mt76.dev,
+		 "mt7921u: enable rx aggr limit=%uKB timeout=%uus pkt_limit=%u buf=%u\n",
+		 MT7921U_RX_AGG_LIMIT_KB, MT7921U_RX_AGG_TIMEOUT_US,
+		 MT7921U_RX_AGG_PKT_LIMIT, MT7921U_RX_AGG_BUF_SIZE);
+
+	mt76_set(dev, MT_UDMA_WLCFG_0, MT_WL_RX_AGG_EN);
+	mt76_rmw(dev, MT_UDMA_WLCFG_0,
+			 MT_WL_RX_AGG_LMT | MT_WL_RX_AGG_TO,
+			 FIELD_PREP(MT_WL_RX_AGG_LMT, MT7921U_RX_AGG_LIMIT_KB) |
+			 FIELD_PREP(MT_WL_RX_AGG_TO, MT7921U_RX_AGG_TIMEOUT_US));
+	mt76_rmw_field(dev, MT_UDMA_WLCFG_1,
+		       MT_WL_RX_AGG_PKT_LMT, MT7921U_RX_AGG_PKT_LIMIT);
+}
+
 static int mt7921u_mac_reset(struct mt792x_dev *dev)
 {
 	int err;
@@ -120,6 +145,9 @@ static int mt7921u_mac_reset(struct mt792x_dev *dev)
 	err = mt792xu_dma_init(dev, false);
 	if (err)
 		goto out;
+
+	if (dev->mt76.usb.rx_aggr)
+		mt7921u_rx_aggr_enable(dev, true);
 
 	mt76_wr(dev, MT_SWDEF_MODE, MT_SWDEF_NORMAL_MODE);
 	mt76_set(dev, MT_UDMA_TX_QSEL, MT_FW_DL_EN);
@@ -217,6 +245,10 @@ static int mt7921u_probe(struct usb_interface *usb_intf,
 	mdev->usb.tx_aggr = true;
 	dev_info(mdev->dev,
 		 "mt7921u: enable USB tx aggr for data queues only\n");
+	mdev->usb.rx_aggr = true;
+	mdev->usb.rx_aggr_buf_size = MT7921U_RX_AGG_BUF_SIZE;
+	dev_info(mdev->dev,
+		 "mt7921u: enable USB rx aggr on main rx queue only\n");
 
 	mdev->rev = (mt76_rr(dev, MT_HW_CHIPID) << 16) |
 		    (mt76_rr(dev, MT_HW_REV) & 0xff);
@@ -243,6 +275,9 @@ static int mt7921u_probe(struct usb_interface *usb_intf,
 	ret = mt792xu_dma_init(dev, false);
 	if (ret)
 		goto error;
+
+	if (mdev->usb.rx_aggr)
+		mt7921u_rx_aggr_enable(dev, true);
 
 	hw = mt76_hw(dev);
 	/* check hw sg support in order to enable AMSDU */
