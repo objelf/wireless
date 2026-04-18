@@ -596,6 +596,10 @@ void mt7921_queue_rx_skb(struct mt76_dev *mdev, enum mt76_rxq_id q,
 	if (type == PKT_TYPE_RX_EVENT && flag == 0x1)
 		type = PKT_TYPE_NORMAL_MCU;
 
+	dev_info(dev->mt76.dev,
+	 "queue_rx_skb: q=%d type=0x%x flag=0x%x len=%u\n",
+	 q, type, flag, skb->len);
+
 	switch (type) {
 	case PKT_TYPE_TXRX_NOTIFY:
 		/* PKT_TYPE_TXRX_NOTIFY can be received only by mmio devices */
@@ -603,6 +607,7 @@ void mt7921_queue_rx_skb(struct mt76_dev *mdev, enum mt76_rxq_id q,
 		napi_consume_skb(skb, 1);
 		break;
 	case PKT_TYPE_RX_EVENT:
+	dev_info(dev->mt76.dev, "queue_rx_skb -> RX_EVENT\n");
 		mt7921_mcu_rx_event(dev, skb);
 		break;
 	case PKT_TYPE_TXS:
@@ -611,7 +616,9 @@ void mt7921_queue_rx_skb(struct mt76_dev *mdev, enum mt76_rxq_id q,
 		dev_kfree_skb(skb);
 		break;
 	case PKT_TYPE_NORMAL_MCU:
+	dev_info(dev->mt76.dev, "queue_rx_skb -> NORMAL_MCU\n");
 	case PKT_TYPE_NORMAL:
+	dev_info(dev->mt76.dev, "queue_rx_skb -> NORMAL_DATA\n");
 		if (!mt7921_mac_fill_rx(dev, skb)) {
 			mt76_rx(&dev->mt76, q, skb);
 			return;

@@ -89,7 +89,7 @@ static int mt7921u_mcu_init(struct mt792x_dev *dev)
 
 #define MT7921U_RX_AGG_LIMIT_KB		32
 #define MT7921U_RX_AGG_TIMEOUT_US	100
-#define MT7921U_RX_AGG_PKT_LIMIT	30
+#define MT7921U_RX_AGG_PKT_LIMIT	1 //30
 #define MT7921U_RX_AGG_BUF_SIZE		(36 * 1024)
 
 static void mt7921u_rx_aggr_enable(struct mt792x_dev *dev, bool enable)

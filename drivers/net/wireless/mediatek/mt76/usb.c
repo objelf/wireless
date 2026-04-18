@@ -542,8 +542,12 @@ mt76u_process_rx_entry_aggr(struct mt76_dev *dev, struct urb *urb,
 		}
 
 		agg_len = mt76u_get_rx_aggr_entry_len(dev, data, rem);
-		if (agg_len < len || agg_len > rem)
+		if (agg_len < len || agg_len > rem) {
+		dev_info(dev->dev,
+		 "rx aggr invalid stride: pkt_len=%d agg_len=%d rem=%d\n",
+		 len, agg_len, rem);
 			break;
+		}
 
 		dev_info(dev->dev,
 			"rx aggr pkt: pkt_len=%d agg_len=%d rem=%d\n",
@@ -557,6 +561,10 @@ mt76u_process_rx_entry_aggr(struct mt76_dev *dev, struct urb *urb,
 			skb_put_data(skb, data, len);
 			dev->drv->rx_skb(dev, MT_RXQ_MAIN, skb, NULL);
 			pkts++;
+		} else {
+			dev_info(dev->dev,
+		 		"rx aggr dropped by rx_check: len=%d rem=%d\n",
+		 		len, rem);
 		}
 
 		data += agg_len;
@@ -616,6 +624,10 @@ mt76u_process_rx_entry(struct mt76_dev *dev, struct urb *urb,
 	int len, nsgs = 1, head_room, drv_flags = dev->drv->drv_flags;
 	struct sk_buff *skb;
 
+	dev_info(dev->dev,
+	 "rx legacy enter: actual=%u num_sgs=%u buf_size=%d\n",
+	 urb->actual_length, urb->num_sgs, buf_size);
+
 	if (!test_bit(MT76_STATE_INITIALIZED, &dev->phy.state))
 		return 0;
 
@@ -623,12 +635,19 @@ mt76u_process_rx_entry(struct mt76_dev *dev, struct urb *urb,
 	if (len < 0)
 		return 0;
 
+dev_info(dev->dev,
+	 "rx legacy len: len=%d actual=%u\n",
+	 len, urb->actual_length);
+
 	head_room = drv_flags & MT_DRV_RX_DMA_HDR ? 0 : MT_DMA_HDR_LEN;
 	data_len = min_t(int, len, data_len - head_room);
 
 	if (len == data_len &&
-	    dev->drv->rx_check && !dev->drv->rx_check(dev, data, data_len))
+	    dev->drv->rx_check && !dev->drv->rx_check(dev, data, data_len)) {
+dev_info(dev->dev,
+		 "rx legacy dropped by rx_check: len=%d\n", data_len);
 		return 0;
+	}
 
 	skb = mt76u_build_rx_skb(dev, data, data_len, buf_size);
 	if (!skb)
@@ -658,6 +677,10 @@ static void mt76u_complete_rx(struct urb *urb)
 	unsigned long flags;
 
 	trace_rx_urb(dev, urb);
+
+	dev_info(dev->dev,
+	 "rx complete: q=%u actual=%u head=%u tail=%u queued=%u\n",
+	 q->hw_idx, urb->actual_length, q->head, q->tail, q->queued);
 
 	switch (urb->status) {
 	case -ECONNRESET:
@@ -708,8 +731,14 @@ mt76u_process_rx_queue(struct mt76_dev *dev, struct mt76_queue *q)
 		urb = mt76u_get_next_rx_entry(q);
 		if (!urb)
 			break;
+	dev_info(dev->dev,
+	 "rx queue: qid=%d actual=%u rx_aggr=%d mcu_running=%d path=%s\n",
+	 qid, urb->actual_length, dev->usb.rx_aggr,
+	 test_bit(MT76_STATE_MCU_RUNNING, &dev->phy.state),
+	 (qid == MT_RXQ_MAIN && dev->usb.rx_aggr) ? "aggr" : "legacy");
 
-		if (qid == MT_RXQ_MAIN && dev->usb.rx_aggr) {
+	if (qid == MT_RXQ_MAIN && dev->usb.rx_aggr &&
+    			test_bit(MT76_STATE_MCU_RUNNING, &dev->phy.state))  {
  			count = mt76u_process_rx_entry_aggr(dev, urb, q->buf_size);
 			/* RX aggr path copies packets out of the shared buffer, so
 			 * the same page-pool backed buffer can be resubmitted directly.
