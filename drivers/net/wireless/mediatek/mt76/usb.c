@@ -903,6 +903,9 @@ static void mt76u_complete_tx_aggr(struct urb *urb)
 	mt76_worker_schedule(&dev->usb.status_worker);
 }
 
+#define MT76U_TX_AGGR_MAX_LEN        (32 * 1024)
+#define MT76U_TX_AGGR_TAIL_LEN       4
+
 static int
 mt76u_tx_setup_aggr_buffers(struct mt76_dev *dev, struct mt76_queue *q,
 			    struct mt76_queue_entry *e, struct urb *urb)
@@ -910,21 +913,32 @@ mt76u_tx_setup_aggr_buffers(struct mt76_dev *dev, struct mt76_queue *q,
 	void *buf;
 	u16 idx = q->first;
 	u16 total = 0;
-	u16 frame_len;
+	u16 frame_len, aligned_len;
 	u8 nframes = 0, aggr_len;
 	unsigned int i;
 
-	while (idx != q->head && nframes < MT76U_TX_AGGR_MAX_FRAMES) {
+	e->aggr_len = 1;
+	e->aggr_buf = NULL;
+
+	while (idx != q->head) {
 		struct mt76_queue_entry *iter = &q->entry[idx];
 
 		if (!iter->skb)
 			break;
 
-		if (iter->skb->len < 4)
+		if (iter->skb->len < MT76U_TX_AGGR_TAIL_LEN)
 			break;
 
-		frame_len = iter->skb->len - 4;
-		total += frame_len;
+		/* drop each packet's own final tail, then align like vendor */
+		frame_len = iter->skb->len - MT76U_TX_AGGR_TAIL_LEN;
+		aligned_len = ALIGN(frame_len, 4);
+
+		/* keep room for one final aggregate tail */
+		if (total + aligned_len + MT76U_TX_AGGR_TAIL_LEN >
+		    MT76U_TX_AGGR_MAX_LEN)
+			break;
+
+		total += aligned_len;
 
 		nframes++;
 		idx = (idx + 1) % q->ndesc;
@@ -934,7 +948,7 @@ mt76u_tx_setup_aggr_buffers(struct mt76_dev *dev, struct mt76_queue *q,
 		return mt76u_tx_setup_buffers(dev, e->skb, urb);
 
 	aggr_len = nframes;
-	total += 4;
+	total += MT76U_TX_AGGR_TAIL_LEN;
 
 	buf = kmalloc(total, GFP_ATOMIC);
 	if (!buf)
@@ -946,14 +960,21 @@ mt76u_tx_setup_aggr_buffers(struct mt76_dev *dev, struct mt76_queue *q,
 	for (i = 0; i < aggr_len; i++) {
 		struct mt76_queue_entry *iter = &q->entry[idx];
 
-		if (WARN_ON(!iter->skb || iter->skb->len < 4)) {
+		if (WARN_ON(!iter->skb ||
+			    iter->skb->len < MT76U_TX_AGGR_TAIL_LEN)) {
 			kfree(buf);
 			return mt76u_tx_setup_buffers(dev, e->skb, urb);
 		}
 
-		frame_len = iter->skb->len - 4;
+		frame_len = iter->skb->len - MT76U_TX_AGGR_TAIL_LEN;
+		aligned_len = ALIGN(frame_len, 4);
+
 		memcpy(buf + total, iter->skb->data, frame_len);
-		total += frame_len;
+		if (aligned_len > frame_len)
+			memset(buf + total + frame_len, 0,
+			       aligned_len - frame_len);
+
+		total += aligned_len;
 		idx = (idx + 1) % q->ndesc;
 	}
 
