@@ -427,7 +427,7 @@ mt7925_mcu_tx_done_event(struct mt792x_dev *dev, struct sk_buff *skb)
 		u8 ver;
 		u8 rsv[3];
 		u8 data[];
-	} __packed * txs;
+	} __packed *txs;
 	struct tlv *tlv;
 	u32 tlv_len;
 
