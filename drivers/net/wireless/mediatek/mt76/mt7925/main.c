@@ -1992,6 +1992,10 @@ static void mt7925_mgd_prepare_tx(struct ieee80211_hw *hw,
 	u16 duration = info->duration ? info->duration :
 		       jiffies_to_msecs(HZ);
 
+	if (info->subtype == IEEE80211_STYPE_DEAUTH ||
+	    info->subtype == IEEE80211_STYPE_DISASSOC)
+               return;
+
 	mt792x_mutex_acquire(dev);
 	mt7925_set_roc(mvif->phy, &mvif->bss_conf,
 		       mvif->bss_conf.mt76.ctx->def.chan, duration,
