@@ -53,8 +53,8 @@ struct nan_dev_info_evt {
 	u8 is_enabled;
 	u8 my_addr[ETH_ALEN];
 	u8 en_fw_election;
-	u8 nan_dev_role;
-	u8 nan_dev_state;
+	__le32 nan_dev_role;
+	__le32 nan_dev_state;
 	u8 mst_preference;
 	u8 random_factor;
 	u8 cnt_hop;
@@ -69,7 +69,7 @@ struct nan_dev_info_evt {
 	__le32 tsf[2];
 	u8 pn_igtk[6];
 	u8 pn_bigtk[6];
-} __packed;
+};
 
 /* Firmware NAN discovery window event */
 struct nan_rpt_dw_evt {
@@ -80,7 +80,7 @@ struct nan_rpt_dw_evt {
 	__le32 actual_tsf_l;
 	__le16 channel;
 	__le16 dw_num;
-} __packed;
+};
 
 struct mt7925_nan_conf_dw {
 	u8 config_2dot4g_dw_band;
