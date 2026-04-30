@@ -467,7 +467,8 @@ bool mt76_connac2_mac_add_txs_skb(struct mt76_dev *dev, struct mt76_wcid *wcid,
 void mt76_connac2_mac_decode_he_radiotap(struct mt76_dev *dev,
 					 struct sk_buff *skb,
 					 __le32 *rxv, u32 mode);
-int mt76_connac2_reverse_frag0_hdr_trans(struct ieee80211_vif *vif,
+int mt76_connac2_reverse_frag0_hdr_trans(struct mt76_dev *dev,
+					 struct ieee80211_vif *vif,
 					 struct sk_buff *skb, u16 hdr_offset);
 int mt76_connac2_mac_fill_rx_rate(struct mt76_dev *dev,
 				  struct mt76_rx_status *status,

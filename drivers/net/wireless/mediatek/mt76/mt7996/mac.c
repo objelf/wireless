@@ -186,17 +186,19 @@ static void mt7996_mac_sta_poll(struct mt7996_dev *dev)
 }
 
 /* The HW does not translate the mac header to 802.3 for mesh point */
-static int mt7996_reverse_frag0_hdr_trans(struct sk_buff *skb, u16 hdr_gap)
+static int mt7996_reverse_frag0_hdr_trans(struct mt7996_dev *dev,
+					  struct sk_buff *skb, u16 hdr_gap)
 {
 	struct mt76_rx_status *status = (struct mt76_rx_status *)skb->cb;
 	struct ethhdr *eth_hdr = (struct ethhdr *)(skb->data + hdr_gap);
-	struct mt7996_sta_link *msta_link = (void *)status->wcid;
-	struct mt7996_sta *msta = msta_link->sta;
+	struct mt76_wcid *wcid = mt76_wcid_ptr(dev, status->wcid_idx);
+	struct mt7996_sta_link *msta_link;
 	struct ieee80211_bss_conf *link_conf;
 	__le32 *rxd = (__le32 *)skb->data;
 	struct ieee80211_sta *sta;
 	struct ieee80211_vif *vif;
 	struct ieee80211_hdr hdr;
+	struct mt7996_sta *msta;
 	u16 frame_control;
 
 	if (le32_get_bits(rxd[3], MT_RXD3_NORMAL_ADDR_TYPE) !=
@@ -206,10 +208,16 @@ static int mt7996_reverse_frag0_hdr_trans(struct sk_buff *skb, u16 hdr_gap)
 	if (!(le32_to_cpu(rxd[1]) & MT_RXD1_NORMAL_GROUP_4))
 		return -EINVAL;
 
+	if (!wcid)
+		return -EINVAL;
+
+	msta_link = container_of(wcid, struct mt7996_sta_link, wcid);
+	msta = msta_link->sta;
+
 	if (!msta || !msta->vif)
 		return -EINVAL;
 
-	sta = wcid_to_sta(status->wcid);
+	sta = wcid_to_sta(wcid);
 	vif = container_of((void *)msta->vif, struct ieee80211_vif, drv_priv);
 	link_conf = rcu_dereference(vif->link_conf[msta_link->wcid.link_id]);
 	if (!link_conf)
@@ -429,6 +437,7 @@ mt7996_mac_fill_rx(struct mt7996_dev *dev, enum mt76_rxq_id q,
 	bool unicast, insert_ccmp_hdr = false;
 	u8 remove_pad, amsdu_info, band_idx;
 	u8 mode = 0, qos_ctl = 0;
+	struct mt76_wcid *wcid;
 	bool hdr_trans;
 	u16 hdr_gap;
 	u16 seq_ctrl = 0;
@@ -461,12 +470,14 @@ mt7996_mac_fill_rx(struct mt7996_dev *dev, enum mt76_rxq_id q,
 
 	unicast = FIELD_GET(MT_RXD3_NORMAL_ADDR_TYPE, rxd3) == MT_RXD3_NORMAL_U2M;
 	idx = FIELD_GET(MT_RXD1_NORMAL_WLAN_IDX, rxd1);
-	status->wcid = mt7996_rx_get_wcid(dev, idx, band_idx);
 
-	if (status->wcid) {
+	wcid = mt7996_rx_get_wcid(dev, idx, band_idx);
+	status->wcid_idx = wcid ? wcid->idx : MT76_WCID_IDX_INVALID;
+
+	if (wcid) {
 		struct mt7996_sta_link *msta_link;
 
-		msta_link = container_of(status->wcid, struct mt7996_sta_link,
+		msta_link = container_of(wcid, struct mt7996_sta_link,
 					 wcid);
 		msta = msta_link->sta;
 		mt76_wcid_add_poll(&dev->mt76, &msta_link->wcid);
@@ -620,7 +631,7 @@ mt7996_mac_fill_rx(struct mt7996_dev *dev, enum mt76_rxq_id q,
 
 	hdr_gap = (u8 *)rxd - skb->data + 2 * remove_pad;
 	if (hdr_trans && ieee80211_has_morefrags(fc)) {
-		if (mt7996_reverse_frag0_hdr_trans(skb, hdr_gap))
+		if (mt7996_reverse_frag0_hdr_trans(dev, skb, hdr_gap))
 			return -EINVAL;
 		hdr_trans = false;
 	} else {
@@ -697,7 +708,7 @@ mt7996_mac_fill_rx(struct mt7996_dev *dev, enum mt76_rxq_id q,
 		}
 	}
 
-	if (!status->wcid || !ieee80211_is_data_qos(fc) || hw_aggr)
+	if (!wcid || !ieee80211_is_data_qos(fc) || hw_aggr)
 		return 0;
 
 	status->aggr = unicast &&

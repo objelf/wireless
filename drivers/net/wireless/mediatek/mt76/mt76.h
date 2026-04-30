@@ -364,6 +364,7 @@ enum mt76_wcid_flags {
 };
 
 #define MT76_N_WCIDS 1088
+#define MT76_WCID_IDX_INVALID		0xffff
 #define MT76_BEACON_MON_MAX_MISS	7
 
 /* stored in ieee80211_tx_info::hw_queue */
@@ -728,10 +729,7 @@ struct mt76_mmio {
 };
 
 struct mt76_rx_status {
-	union {
-		struct mt76_wcid *wcid;
 		u16 wcid_idx;
-	};
 
 	u32 reorder_time;
 
@@ -1793,7 +1791,8 @@ void mt76_rx_complete(struct mt76_dev *dev, struct sk_buff_head *frames,
 		      struct napi_struct *napi);
 void mt76_rx_poll_complete(struct mt76_dev *dev, enum mt76_rxq_id q,
 			   struct napi_struct *napi);
-void mt76_rx_aggr_reorder(struct sk_buff *skb, struct sk_buff_head *frames);
+void mt76_rx_aggr_reorder(struct mt76_dev *dev, struct sk_buff *skb,
+			  struct sk_buff_head *frames);
 void mt76_testmode_tx_pending(struct mt76_phy *phy);
 void mt76_queue_tx_complete(struct mt76_dev *dev, struct mt76_queue *q,
 			    struct mt76_queue_entry *e);

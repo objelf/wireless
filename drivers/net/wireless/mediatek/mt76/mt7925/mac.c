@@ -166,16 +166,19 @@ void mt7925_mac_set_fixed_rate_table(struct mt792x_dev *dev,
 }
 
 /* The HW does not translate the mac header to 802.3 for mesh point */
-static int mt7925_reverse_frag0_hdr_trans(struct sk_buff *skb, u16 hdr_gap)
+static int mt7925_reverse_frag0_hdr_trans(struct mt792x_dev *dev,
+					  struct sk_buff *skb, u16 hdr_gap)
 {
 	struct mt76_rx_status *status = (struct mt76_rx_status *)skb->cb;
 	struct ethhdr *eth_hdr = (struct ethhdr *)(skb->data + hdr_gap);
-	struct mt792x_sta *msta = (struct mt792x_sta *)status->wcid;
 	__le32 *rxd = (__le32 *)skb->data;
 	struct ieee80211_sta *sta;
 	struct ieee80211_vif *vif;
 	struct ieee80211_hdr hdr;
+	struct mt792x_sta *msta;
 	u16 frame_control;
+
+	msta = (struct mt792x_sta *)mt76_wcid_ptr(dev, status->wcid_idx);
 
 	if (le32_get_bits(rxd[3], MT_RXD3_NORMAL_ADDR_TYPE) !=
 	    MT_RXD3_NORMAL_U2M)
@@ -373,6 +376,7 @@ mt7925_mac_fill_rx(struct mt792x_dev *dev, struct sk_buff *skb)
 	u32 rxd3 = le32_to_cpu(rxd[3]);
 	u32 rxd4 = le32_to_cpu(rxd[4]);
 	struct mt792x_link_sta *mlink;
+	struct mt76_wcid *wcid;
 	u8 mode = 0; /* , band_idx; */
 	u16 seq_ctrl = 0;
 	__le16 fc = 0;
@@ -397,10 +401,11 @@ mt7925_mac_fill_rx(struct mt792x_dev *dev, struct sk_buff *skb)
 	chfreq = FIELD_GET(MT_RXD3_NORMAL_CH_FREQ, rxd3);
 	unicast = FIELD_GET(MT_RXD3_NORMAL_ADDR_TYPE, rxd3) == MT_RXD3_NORMAL_U2M;
 	idx = FIELD_GET(MT_RXD1_NORMAL_WLAN_IDX, rxd1);
-	status->wcid = mt792x_rx_get_wcid(dev, idx, unicast);
+	wcid = mt792x_rx_get_wcid(dev, idx, unicast);
+	status->wcid_idx = wcid ? wcid->idx : MT76_WCID_IDX_INVALID;
 
-	if (status->wcid) {
-		mlink = container_of(status->wcid, struct mt792x_link_sta, wcid);
+	if (wcid) {
+		mlink = container_of(wcid, struct mt792x_link_sta, wcid);
 		mt76_wcid_add_poll(&dev->mt76, &mlink->wcid);
 	}
 
@@ -550,7 +555,7 @@ mt7925_mac_fill_rx(struct mt792x_dev *dev, struct sk_buff *skb)
 
 	hdr_gap = (u8 *)rxd - skb->data + 2 * remove_pad;
 	if (hdr_trans && ieee80211_has_morefrags(fc)) {
-		if (mt7925_reverse_frag0_hdr_trans(skb, hdr_gap))
+		if (mt7925_reverse_frag0_hdr_trans(dev, skb, hdr_gap))
 			return -EINVAL;
 		hdr_trans = false;
 	} else {
@@ -613,7 +618,7 @@ mt7925_mac_fill_rx(struct mt792x_dev *dev, struct sk_buff *skb)
 		}
 	}
 
-	if (!status->wcid || !ieee80211_is_data_qos(fc))
+	if (!wcid || !ieee80211_is_data_qos(fc))
 		return 0;
 
 	status->aggr = unicast && !ieee80211_is_qos_nullfunc(fc);
