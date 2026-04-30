@@ -246,16 +246,19 @@ static void mt7615_mac_fill_tm_rx(struct mt7615_phy *phy, __le32 *rxv)
 }
 
 /* The HW does not translate the mac header to 802.3 for mesh point */
-static int mt7615_reverse_frag0_hdr_trans(struct sk_buff *skb, u16 hdr_gap)
+static int mt7615_reverse_frag0_hdr_trans(struct mt7615_dev *dev,
+					  struct sk_buff *skb, u16 hdr_gap)
 {
 	struct mt76_rx_status *status = (struct mt76_rx_status *)skb->cb;
 	struct ethhdr *eth_hdr = (struct ethhdr *)(skb->data + hdr_gap);
-	struct mt7615_sta *msta = (struct mt7615_sta *)status->wcid;
 	__le32 *rxd = (__le32 *)skb->data;
 	struct ieee80211_sta *sta;
 	struct ieee80211_vif *vif;
 	struct ieee80211_hdr hdr;
+	struct mt7615_sta *msta;
 	u16 frame_control;
+
+	msta = (struct mt7615_sta *)mt76_wcid_ptr(dev, status->wcid_idx);
 
 	if (le32_get_bits(rxd[1], MT_RXD1_NORMAL_ADDR_TYPE) !=
 	    MT_RXD1_NORMAL_U2M)
@@ -335,6 +338,7 @@ static int mt7615_mac_fill_rx(struct mt7615_dev *dev, struct sk_buff *skb)
 	struct ieee80211_supported_band *sband;
 	struct ieee80211_hdr *hdr;
 	struct mt7615_phy *phy2;
+	struct mt76_wcid *wcid;
 	__le32 *rxd = (__le32 *)skb->data;
 	u32 rxd0 = le32_to_cpu(rxd[0]);
 	u32 rxd1 = le32_to_cpu(rxd[1]);
@@ -378,12 +382,13 @@ static int mt7615_mac_fill_rx(struct mt7615_dev *dev, struct sk_buff *skb)
 
 	unicast = (rxd1 & MT_RXD1_NORMAL_ADDR_TYPE) == MT_RXD1_NORMAL_U2M;
 	idx = FIELD_GET(MT_RXD2_NORMAL_WLAN_IDX, rxd2);
-	status->wcid = mt7615_rx_get_wcid(dev, idx, unicast);
+	wcid = mt7615_rx_get_wcid(dev, idx, unicast);
+	status->wcid_idx = wcid ? wcid->idx : MT76_WCID_IDX_INVALID;
 
-	if (status->wcid) {
+	if (wcid) {
 		struct mt7615_sta *msta;
 
-		msta = container_of(status->wcid, struct mt7615_sta, wcid);
+		msta = container_of(wcid, struct mt7615_sta, wcid);
 		mt76_wcid_add_poll(&dev->mt76, &msta->wcid);
 	}
 
@@ -590,7 +595,7 @@ static int mt7615_mac_fill_rx(struct mt7615_dev *dev, struct sk_buff *skb)
 
 	hdr_gap = (u8 *)rxd - skb->data + 2 * remove_pad;
 	if (hdr_trans && ieee80211_has_morefrags(fc)) {
-		if (mt7615_reverse_frag0_hdr_trans(skb, hdr_gap))
+		if (mt7615_reverse_frag0_hdr_trans(dev, skb, hdr_gap))
 			return -EINVAL;
 		hdr_trans = false;
 	} else {
@@ -638,7 +643,7 @@ static int mt7615_mac_fill_rx(struct mt7615_dev *dev, struct sk_buff *skb)
 		status->flag |= RX_FLAG_8023;
 	}
 
-	if (!status->wcid || !ieee80211_is_data_qos(fc))
+	if (!wcid || !ieee80211_is_data_qos(fc))
 		return 0;
 
 	status->aggr = unicast &&

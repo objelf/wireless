@@ -184,6 +184,7 @@ mt7921_mac_fill_rx(struct mt792x_dev *dev, struct sk_buff *skb)
 	u32 rxd4 = le32_to_cpu(rxd[4]);
 	struct mt792x_sta *msta = NULL;
 	struct mt792x_link_sta *mlink;
+	struct mt76_wcid *wcid;
 	u16 seq_ctrl = 0;
 	__le16 fc = 0;
 	u8 mode = 0;
@@ -211,10 +212,11 @@ mt7921_mac_fill_rx(struct mt792x_dev *dev, struct sk_buff *skb)
 	chfreq = FIELD_GET(MT_RXD3_NORMAL_CH_FREQ, rxd3);
 	unicast = FIELD_GET(MT_RXD3_NORMAL_ADDR_TYPE, rxd3) == MT_RXD3_NORMAL_U2M;
 	idx = FIELD_GET(MT_RXD1_NORMAL_WLAN_IDX, rxd1);
-	status->wcid = mt792x_rx_get_wcid(dev, idx, unicast);
+	wcid = mt792x_rx_get_wcid(dev, idx, unicast);
+	status->wcid_idx = wcid ? wcid->idx : MT76_WCID_IDX_INVALID;
 
-	if (status->wcid) {
-		mlink = container_of(status->wcid, struct mt792x_link_sta, wcid);
+	if (wcid) {
+		mlink = container_of(wcid, struct mt792x_link_sta, wcid);
 		msta = container_of(mlink, struct mt792x_sta, deflink);
 		mt76_wcid_add_poll(&dev->mt76, &mlink->wcid);
 	}
@@ -395,7 +397,8 @@ mt7921_mac_fill_rx(struct mt792x_dev *dev, struct sk_buff *skb)
 
 		vif = container_of((void *)msta->vif, struct ieee80211_vif,
 				   drv_priv);
-		err = mt76_connac2_reverse_frag0_hdr_trans(vif, skb, hdr_gap);
+		err = mt76_connac2_reverse_frag0_hdr_trans(&dev->mt76, vif,
+							   skb, hdr_gap);
 		if (err)
 			return err;
 
@@ -433,7 +436,7 @@ mt7921_mac_fill_rx(struct mt792x_dev *dev, struct sk_buff *skb)
 	if (rxv && mode >= MT_PHY_TYPE_HE_SU && !(status->flag & RX_FLAG_8023))
 		mt76_connac2_mac_decode_he_radiotap(&dev->mt76, skb, rxv, mode);
 
-	if (!status->wcid || !ieee80211_is_data_qos(fc))
+	if (!wcid || !ieee80211_is_data_qos(fc))
 		return 0;
 
 	status->aggr = unicast && !ieee80211_is_qos_nullfunc(fc);

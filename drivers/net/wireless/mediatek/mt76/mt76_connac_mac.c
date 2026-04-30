@@ -961,7 +961,8 @@ void mt76_connac2_mac_decode_he_radiotap(struct mt76_dev *dev,
 EXPORT_SYMBOL_GPL(mt76_connac2_mac_decode_he_radiotap);
 
 /* The HW does not translate the mac header to 802.3 for mesh point */
-int mt76_connac2_reverse_frag0_hdr_trans(struct ieee80211_vif *vif,
+int mt76_connac2_reverse_frag0_hdr_trans(struct mt76_dev *dev,
+					 struct ieee80211_vif *vif,
 					 struct sk_buff *skb, u16 hdr_offset)
 {
 	struct mt76_rx_status *status = (struct mt76_rx_status *)skb->cb;
@@ -969,6 +970,7 @@ int mt76_connac2_reverse_frag0_hdr_trans(struct ieee80211_vif *vif,
 	__le32 *rxd = (__le32 *)skb->data;
 	struct ieee80211_sta *sta;
 	struct ieee80211_hdr hdr;
+	struct mt76_wcid *wcid;
 	u16 frame_control;
 
 	if (le32_get_bits(rxd[3], MT_RXD3_NORMAL_ADDR_TYPE) !=
@@ -978,7 +980,13 @@ int mt76_connac2_reverse_frag0_hdr_trans(struct ieee80211_vif *vif,
 	if (!(le32_to_cpu(rxd[1]) & MT_RXD1_NORMAL_GROUP_4))
 		return -EINVAL;
 
-	sta = container_of((void *)status->wcid, struct ieee80211_sta, drv_priv);
+	wcid = __mt76_wcid_ptr(dev, status->wcid_idx);
+	if (!wcid)
+		return -EINVAL;
+
+	sta = container_of((void *)wcid, struct ieee80211_sta, drv_priv);
+	if (!sta)
+		return -EINVAL;
 
 	/* store the info from RXD and ethhdr to avoid being overridden */
 	frame_control = le32_get_bits(rxd[6], MT_RXD6_FRAME_CONTROL);
