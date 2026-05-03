@@ -568,6 +568,77 @@ mt7925_mcu_uni_debug_msg_event(struct mt792x_dev *dev, struct sk_buff *skb)
 	}
 }
 
+void mt7925_mcu_uni_tdls_event(struct mt792x_dev *dev, struct sk_buff *skb)
+{
+	struct mt7925_mcu_rxd *rxd = (struct mt7925_mcu_rxd *) skb->data;
+	struct mt7925_uni_event_tdls *hdr;
+	struct mt7925_uni_event_tdls_teardown *td;
+	struct mt76_wcid *wcid;
+	struct ieee80211_sta *sta;
+	u8 *tlv;
+	int tlv_len, offset = 0;
+	u16 tag, tlen;
+
+	hdr = (struct mt7925_uni_event_tdls *)(rxd + 1);
+	tlv = hdr->tlv;
+	tlv_len = skb_tail_pointer(skb) - tlv;
+
+	while (offset + 4 <= tlv_len) {
+		tag = le16_to_cpu(*(__le16 *)(tlv + offset));
+		tlen = le16_to_cpu(*(__le16 *)(tlv + offset + 2));
+		
+		if (tlen < 4 || offset + tlen > tlv_len)
+			break;
+		if (tag == UNI_EVENT_TDLS_TAG_TEAR_DOWN &&
+		    tlen >= sizeof(*td)) {
+			td = (struct mt7925_uni_event_tdls_teardown *)
+			      (tlv + offset);
+			rcu_read_lock();
+			wcid = rcu_dereference(
+				dev->mt76.wcid[le32_to_cpu(td->wlan_idx)]);
+			if (wcid) {
+				struct mt792x_link_sta *mlink =
+					container_of(wcid,
+						     struct mt792x_link_sta,
+						     wcid);
+				struct mt792x_sta *msta = mlink->sta;
+				struct ieee80211_vif *vif =
+					container_of((void *)msta->vif,
+						     struct ieee80211_vif,
+					     	     drv_priv);
+		   		sta = wcid_to_sta(wcid);
+				if (sta)
+					ieee80211_tdls_oper_request(
+							vif, sta->addr,
+							NL80211_TDLS_TEARDOWN,
+							WLAN_REASON_TDLS_TEARDOWN_UNREACHABLE,
+							GFP_ATOMIC);		
+			}
+			rcu_read_unlock();
+		}
+		offset += tlen;
+	}
+}
+EXPORT_SYMBOL_GPL(mt7925_mcu_uni_tdls_event);
+
+int mt7925_mcu_set_tdls_ch_sw_prohibition(struct mt792x_dev *dev, bool prohibit)
+{
+	struct {
+		struct mt7925_uni_cmd_tdls hdr;
+		struct mt7925_uni_cmd_tdls_ch_sw tag;
+	} __packed req = {
+		.tag = {
+			.tag = cpu_to_le16(UNI_CMD_TDLS_TAG_CH_SW),
+			.len = cpu_to_le16(sizeof(req.tag)),
+			.ch_sw_prohibit = prohibit ? 1 : 0,
+		},
+	};
+
+	return mt76_mcu_send_msg(&dev->mt76, MCU_UNI_CMD(TDLS),
+				 &req, sizeof(req), true);
+}
+EXPORT_SYMBOL_GPL(mt7925_mcu_set_tdls_ch_sw_prohibition);
+
 static void
 mt7925_mcu_handle_mbmc_event(struct mt792x_dev *dev, struct sk_buff *skb)
 {
@@ -628,6 +699,9 @@ mt7925_mcu_uni_rx_unsolicited_event(struct mt792x_dev *dev,
 		break;
 	case MCU_UNI_EVENT_RSSI_MONITOR:
 		mt7925_mcu_rssi_monitor_event(dev, skb);
+		break;
+	case MCU_UNI_EVENT_TDLS:
+		mt7925_mcu_uni_tdls_event(dev, skb);
 		break;
 	case MCU_UNI_EVENT_COREDUMP:
 		dev->fw_assert = true;

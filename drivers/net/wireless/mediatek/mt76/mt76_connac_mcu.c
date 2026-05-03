@@ -411,7 +411,9 @@ void mt76_connac_mcu_sta_basic_tlv(struct mt76_dev *dev, struct sk_buff *skb,
 		basic->aid = cpu_to_le16(link_sta->sta->aid);
 		break;
 	case NL80211_IFTYPE_STATION:
-		if (vif->p2p && !is_connac2(dev))
+		if (link_sta->sta->tdls)
+			conn_type = CONNECTION_TDLS;
+		else if (vif->p2p && !is_connac2(dev))
 			conn_type = CONNECTION_P2P_GO;
 		else
 			conn_type = CONNECTION_INFRA_AP;

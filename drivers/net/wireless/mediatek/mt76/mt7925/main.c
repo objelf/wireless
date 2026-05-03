@@ -2029,6 +2029,8 @@ static void mt7925_vif_cfg_changed(struct ieee80211_hw *hw,
 
 		if (ieee80211_vif_is_mld(vif))
 			mvif->mlo_pm_state = MT792x_MLO_LINK_ASSOC;
+		if (vif->type == NL80211_IFTYPE_STATION)
+			mt7925_mcu_set_tdls_ch_sw_prohibition(dev, false);
 	}
 
 	if (changed & BSS_CHANGED_ARP_FILTER) {
@@ -2478,6 +2480,22 @@ static void mt7925_channel_switch_rx_beacon(struct ieee80211_hw *hw,
 	}
 }
 
+static int
+mt7925_tdls_channel_switch(struct ieee80211_hw *hw, struct ieee80211_vif *vif,
+			   struct ieee80211_sta *sta, u8 oper_class,
+			   struct cfg80211_chan_def *chandef,
+			   struct sk_buff *tmpl_skb, u32 ch_sw_tm_ie)
+{
+	return 0;
+}
+
+static void
+mt7925_tdls_cancel_channel_switch(struct ieee80211_hw *hw,
+				  struct ieee80211_vif *vif,
+				  struct ieee80211_sta *sta)
+{
+}
+
 static int mt7925_start_nan(struct ieee80211_hw *hw,
 			    struct ieee80211_vif *vif,
 			    struct cfg80211_nan_conf *conf)
@@ -2610,6 +2628,8 @@ const struct ieee80211_ops mt7925_ops = {
 	.channel_switch = mt7925_channel_switch,
 	.abort_channel_switch = mt7925_abort_channel_switch,
 	.channel_switch_rx_beacon = mt7925_channel_switch_rx_beacon,
+	.tdls_channel_switch = mt7925_tdls_channel_switch,
+	.tdls_cancel_channel_switch = mt7925_tdls_cancel_channel_switch,
 	.start_nan = mt7925_start_nan,
 	.stop_nan = mt7925_stop_nan,
 	.nan_change_conf = mt7925_nan_change_conf,

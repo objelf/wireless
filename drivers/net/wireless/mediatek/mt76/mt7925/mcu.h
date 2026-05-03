@@ -719,4 +719,39 @@ int mt7925_mcu_update_arp_filter(struct mt76_dev *dev,
 int
 mt7925_mcu_uni_bss_bcnft(struct mt792x_dev *dev,
 			 struct ieee80211_bss_conf *link_conf, bool enable);
+
+struct mt7925_uni_cmd_tdls {
+	u8 rsv[4];
+	u8 tlv[];
+} __packed;
+
+enum {
+	UNI_CMD_TDLS_TAG_CH_SW = 0,
+};
+
+struct mt7925_uni_cmd_tdls_ch_sw {
+	__le16 tag;
+	__le16 len;
+	u8 ch_sw_prohibit;
+	u8 rsv[3];
+} __packed;
+
+struct mt7925_uni_event_tdls {
+	u8 rsv[4];
+	u8 tlv[];
+} __packed;
+
+enum {
+	UNI_EVENT_TDLS_TAG_TEAR_DOWN = 0,
+};
+
+struct mt7925_uni_event_tdls_teardown {
+	__le16 tag;
+	__le16 len;
+	__le32 sub_id;
+	__le32 wlan_idx;
+} __packed;
+
+int mt7925_mcu_set_tdls_ch_sw_prohibition(struct mt792x_dev *dev, bool prohibit);
+void mt7925_mcu_uni_tdls_event(struct mt792x_dev *dev, struct sk_buff *skb);
 #endif
