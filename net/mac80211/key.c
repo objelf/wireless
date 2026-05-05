@@ -175,8 +175,21 @@ static int ieee80211_key_enable_hw_accel(struct ieee80211_key *key)
 	    !(sdata->vif.active_links & BIT(key->conf.link_id)))
 		return 0;
 
+	pr_info("mac80211: key_hw_accel call drv_set_key if=%s sta=%pM sta_ptr=%px uploaded=%d assoc=%d auth=%d tdls=%d cipher=0x%x keyidx=%d flags=0x%x link_id=%d\\n",
+		sdata->name, sta ? sta->sta.addr : NULL, sta,
+		sta ? sta->uploaded : 0,
+		sta ? test_sta_flag(sta, WLAN_STA_ASSOC) : 0,
+		sta ? test_sta_flag(sta, WLAN_STA_AUTHORIZED) : 0,
+		sta ? test_sta_flag(sta, WLAN_STA_TDLS_PEER) : 0,
+		key->conf.cipher, key->conf.keyidx, key->conf.flags,
+		key->conf.link_id);
+
 	ret = drv_set_key(key->local, SET_KEY, sdata,
 			  sta ? &sta->sta : NULL, &key->conf);
+
+	pr_info("mac80211: key_hw_accel drv_set_key done if=%s sta=%pM ret=%d hw_key_idx=%d flags=0x%x\\n",
+		sdata->name, sta ? sta->sta.addr : NULL, ret,
+		key->conf.hw_key_idx, key->conf.flags);
 
 	if (!ret) {
 		key->flags |= KEY_FLAG_UPLOADED_TO_HARDWARE;

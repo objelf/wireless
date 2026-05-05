@@ -2113,6 +2113,12 @@ int mt7925_mcu_sta_update(struct mt792x_dev *dev,
 	info.wcid = &mlink->wcid;
 	info.newly = state != MT76_STA_INFO_STATE_ASSOC;
 
+	if (link_sta && link_sta->sta->tdls)
+		dev_info(dev->mt76.dev,
+			 "mt7925 TDLS mcu_sta_update: peer=%pM enable=%d state=%d newly=%d wcid=%u link=%u cmd=STA_REC_UPDATE\n",
+			 link_sta->addr, enable, state, info.newly,
+			 mlink->wcid.idx, link_sta->link_id);
+
 	return mt7925_mcu_sta_cmd(&dev->mphy, &info);
 }
 

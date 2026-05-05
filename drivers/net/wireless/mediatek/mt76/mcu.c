@@ -94,6 +94,10 @@ int mt76_mcu_skb_send_and_get_msg(struct mt76_dev *dev, struct sk_buff *skb,
 			goto out;
 	}
 
+	dev_info(dev->dev,
+		 "mt76 MCU TX: cmd=0x%x seq=%d wait_resp=%d skb_len=%u retry=%u jiffies=%lu\n",
+		 cmd, seq, wait_resp, skb->len, retry, jiffies);
+
 retry:
 	/* orig skb might be needed for retry, mcu_skb_send_msg consumes it */
 	if (orig_skb)

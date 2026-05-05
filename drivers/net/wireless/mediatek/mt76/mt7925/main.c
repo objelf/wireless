@@ -689,9 +689,20 @@ static int mt7925_set_link_key(struct ieee80211_hw *hw, enum set_key_cmd cmd,
 	mt76_wcid_key_setup(&dev->mt76, wcid,
 			    cmd == SET_KEY ? key : NULL);
 
+	dev_info(dev->mt76.dev,
+		 "mt7925 TDLS set_link_key: cmd=%d link_id=%d mlink=%px wcid_idx=%d cipher=0x%x keyidx=%d keylen=%d pairwise=%d hw_keyidx=%d\\n",
+		 cmd, link_id, mlink, wcid->idx, key->cipher, key->keyidx,
+		 key->keylen, !!(key->flags & IEEE80211_KEY_FLAG_PAIRWISE),
+		 *wcid_keyidx);
+
 	err = mt7925_mcu_add_key(&dev->mt76, vif, &mlink->bip,
 				 key, MCU_UNI_CMD(STA_REC_UPDATE),
 				 &mlink->wcid, cmd, msta);
+
+	dev_info(dev->mt76.dev,
+		 "mt7925 TDLS mcu_add_key: cmd=%d sta=%pM wcid_idx=%d cipher=0x%x keyidx=%d ret=%d\\n",
+		 cmd, sta ? sta->addr : vif->addr, mlink->wcid.idx,
+		 key->cipher, key->keyidx, err);
 
 	if (err)
 		goto out;
@@ -715,6 +726,12 @@ static int mt7925_set_key(struct ieee80211_hw *hw, enum set_key_cmd cmd,
 				  &mvif->sta;
 	struct mt792x_link_sta *mlink;
 	int err;
+
+	dev_info(dev->mt76.dev,
+		 "mt7925 TDLS set_key: cmd=%d vif=%pM sta=%pM sta_ptr=%px cipher=0x%x keyidx=%d keylen=%d flags=0x%x pairwise=%d link_id=%d\\n",
+		 cmd, vif->addr, sta ? sta->addr : vif->addr, sta,
+		 key->cipher, key->keyidx, key->keylen, key->flags,
+		 !!(key->flags & IEEE80211_KEY_FLAG_PAIRWISE), key->link_id);
 
 	/* The hardware does not support per-STA RX GTK, fallback
 	 * to software mode for these.
@@ -1204,9 +1221,19 @@ static void mt7925_mac_link_sta_assoc(struct mt76_dev *mdev,
 
 	ewma_avg_signal_init(&mlink->avg_ack_signal);
 
+	if (link_sta->sta->tdls)
+		dev_info(dev->mt76.dev,
+			 "mt7925 TDLS sta_assoc: peer=%pM wcid=%u link=%u -> STA_REC_UPDATE ASSOC\n",
+			 link_sta->addr, mlink->wcid.idx, link_sta->link_id);
+
 	mt7925_mac_wtbl_update(dev, mlink->wcid.idx,
 			       MT_WTBL_UPDATE_ADM_COUNT_CLEAR);
 	memset(mlink->airtime_ac, 0, sizeof(mlink->airtime_ac));
+
+	if (link_sta->sta->tdls)
+		dev_info(dev->mt76.dev,
+			 "mt7925 TDLS sta_assoc: sending STA_REC_UPDATE peer=%pM wcid=%u link=%u\n",
+			 link_sta->addr, mlink->wcid.idx, link_sta->link_id);
 
 	mt7925_mcu_sta_update(dev, link_sta, vif, mlink, true,
 			      MT76_STA_INFO_STATE_ASSOC);

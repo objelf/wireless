@@ -624,6 +624,9 @@ static int ieee80211_add_key(struct wiphy *wiphy, struct wireless_dev *wdev,
 
 	lockdep_assert_wiphy(local->hw.wiphy);
 
+	pr_info("mac80211: add_key if=%s key_idx=%d pairwise=%d mac=%pM cipher=0x%x sta=%px\n",
+        sdata->name, key_idx, pairwise, mac_addr, params->cipher, sta);
+
 	if (!ieee80211_sdata_running(sdata))
 		return -ENETDOWN;
 
@@ -667,6 +670,13 @@ static int ieee80211_add_key(struct wiphy *wiphy, struct wireless_dev *wdev,
 
 	if (mac_addr) {
 		sta = sta_info_get_bss(sdata, mac_addr);
+		pr_info("mac80211: add_key if=%s link_id=%d key_idx=%d pairwise=%d mac=%pM cipher=0x%x key_len=%d seq_len=%d sta=%px assoc=%d auth=%d tdls=%d uploaded=%d\\n",
+			sdata->name, link_id, key_idx, pairwise, mac_addr,
+			params->cipher, params->key_len, params->seq_len, sta,
+			sta ? test_sta_flag(sta, WLAN_STA_ASSOC) : 0,
+			sta ? test_sta_flag(sta, WLAN_STA_AUTHORIZED) : 0,
+			sta ? test_sta_flag(sta, WLAN_STA_TDLS_PEER) : 0,
+			sta ? sta->uploaded : 0);
 		/*
 		 * The ASSOC test makes sure the driver is ready to
 		 * receive the key. When wpa_supplicant has roamed
@@ -686,6 +696,10 @@ static int ieee80211_add_key(struct wiphy *wiphy, struct wireless_dev *wdev,
 		 */
 		if (!sta || (!sta->sta.epp_peer &&
 			     !test_sta_flag(sta, WLAN_STA_ASSOC))) {
+			pr_info("mac80211: add_key failed before drv_set_key if=%s mac=%pM sta=%px epp=%d assoc=%d ret=-ENOENT\\n",
+				sdata->name, mac_addr, sta,
+				sta ? sta->sta.epp_peer : 0,
+				sta ? test_sta_flag(sta, WLAN_STA_ASSOC) : 0);
 			ieee80211_key_free_unused(key);
 			return -ENOENT;
 		}
