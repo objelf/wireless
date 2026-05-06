@@ -164,6 +164,110 @@ static void mt7921_mac_sta_poll(struct mt792x_dev *dev)
 	}
 }
 
+
+#define MT7921_TDLS_PKT_TYPE			0x02
+#define MT7921_TDLS_CATEGORY			0x0c
+#define MT7921_TDLS_SETUP_RESPONSE		0x01
+#define MT7921_TDLS_STATUS_REQUEST_DECLINED	37
+#ifndef ETH_P_TDLS
+#define ETH_P_TDLS				0x890d
+#endif
+
+static void mt7921_debug_tdls_rx_m2(struct mt792x_dev *dev,
+				    struct sk_buff *skb, bool hdr_trans,
+				    u16 wcid)
+{
+	const u8 *tdls = NULL;
+	unsigned int tdls_len = 0;
+	struct ethhdr *eth;
+
+	if (skb->len < 8)
+		return;
+
+	if (hdr_trans) {
+		if (skb->len < ETH_HLEN + 8)
+			return;
+
+		eth = (struct ethhdr *)skb->data;
+		if (be16_to_cpu(eth->h_proto) != ETH_P_TDLS)
+			return;
+
+		tdls = skb->data + ETH_HLEN;
+		tdls_len = skb->len - ETH_HLEN;
+	} else {
+		const u8 snap_tdls[] = { 0xaa, 0xaa, 0x03, 0x00, 0x00, 0x00, 0x89, 0x0d };
+		unsigned int i;
+
+		for (i = 0; i + sizeof(snap_tdls) + 8 <= skb->len; i++) {
+			if (!memcmp(skb->data + i, snap_tdls, sizeof(snap_tdls))) {
+				tdls = skb->data + i + sizeof(snap_tdls);
+				tdls_len = skb->len - i - sizeof(snap_tdls);
+				break;
+			}
+		}
+
+		if (!tdls)
+			return;
+	}
+
+	if (tdls_len < 8 ||
+	    tdls[0] != MT7921_TDLS_PKT_TYPE ||
+	    tdls[1] != MT7921_TDLS_CATEGORY ||
+	    tdls[2] != MT7921_TDLS_SETUP_RESPONSE)
+		return;
+
+	dev_info(dev->mt76.dev,
+		 "TDLS RX M2: wcid=%u hdr_trans=%d skb_len=%u tdls_len=%u status=%u dialog_token=%u\n",
+		 wcid, hdr_trans, skb->len, tdls_len,
+		 tdls[3] | (tdls[4] << 8), tdls[5]);
+
+	print_hex_dump(KERN_INFO, "mt7921 TDLS RX M2 skb: ",
+		       DUMP_PREFIX_OFFSET, 16, 1,
+		       skb->data, min_t(unsigned int, skb->len, 256), true);
+	print_hex_dump(KERN_INFO, "mt7921 TDLS RX M2 payload: ",
+		       DUMP_PREFIX_OFFSET, 16, 1,
+		       tdls, min_t(unsigned int, tdls_len, 256), true);
+}
+
+static bool mt7921_drop_tdls_rx_m2_declined(struct mt792x_dev *dev,
+					    struct sk_buff *skb,
+					    bool hdr_trans)
+{
+	struct ethhdr *eth;
+	const u8 *tdls;
+	u16 status;
+
+	if (!hdr_trans)
+		return false;
+
+	if (skb->len != ETH_HLEN + 8)
+		return false;
+
+	eth = (struct ethhdr *)skb->data;
+	if (be16_to_cpu(eth->h_proto) != ETH_P_TDLS)
+		return false;
+
+	tdls = skb->data + ETH_HLEN;
+	if (tdls[0] != MT7921_TDLS_PKT_TYPE ||
+	    tdls[1] != MT7921_TDLS_CATEGORY ||
+	    tdls[2] != MT7921_TDLS_SETUP_RESPONSE)
+		return false;
+
+	status = tdls[3] | (tdls[4] << 8);
+	if (status != MT7921_TDLS_STATUS_REQUEST_DECLINED)
+		return false;
+
+	dev_info(dev->mt76.dev,
+		 "TDLS: drop short M2 status=%u dialog_token=%u da=%pM sa=%pM\n",
+		 status, tdls[5], eth->h_dest, eth->h_source);
+
+	print_hex_dump(KERN_INFO, "mt7921 drop TDLS M2: ",
+		       DUMP_PREFIX_OFFSET, 16, 1,
+		       skb->data, skb->len, true);
+
+	return true;
+}
+
 static int
 mt7921_mac_fill_rx(struct mt792x_dev *dev, struct sk_buff *skb)
 {
@@ -430,6 +534,12 @@ mt7921_mac_fill_rx(struct mt792x_dev *dev, struct sk_buff *skb)
 	} else {
 		status->flag |= RX_FLAG_8023;
 	}
+
+	if (mt7921_drop_tdls_rx_m2_declined(dev, skb, hdr_trans))
+		return -EINVAL;
+
+	mt7921_debug_tdls_rx_m2(dev, skb, hdr_trans,
+				wcid ? wcid->idx : 0xffff);
 
 	mt792x_mac_assoc_rssi(dev, skb);
 
