@@ -11,6 +11,10 @@
 #include "mt792x.h"
 #include "mt76_connac2_mac.h"
 
+#define MT792X_USB_RX_AGG_LIMIT		32
+#define MT792X_USB_RX_AGG_TIMEOUT	100
+#define MT792X_USB_RX_AGG_PKT_LIMIT	30
+
 static int mt792xu_read32(struct mt76_dev *dev, u32 addr, void *buf)
 {
 	return __mt76u_vendor_request(dev, MT_VEND_READ_EXT,
@@ -338,9 +342,23 @@ int mt792xu_dma_init(struct mt792x_dev *dev, bool resume)
 	mt76_set(dev, MT_UDMA_WLCFG_0,
 		 MT_WL_RX_EN | MT_WL_TX_EN |
 		 MT_WL_RX_MPSZ_PAD0 | MT_TICK_1US_EN);
-	mt76_clear(dev, MT_UDMA_WLCFG_0,
-		   MT_WL_RX_AGG_TO | MT_WL_RX_AGG_LMT);
-	mt76_clear(dev, MT_UDMA_WLCFG_1, MT_WL_RX_AGG_PKT_LMT);
+
+	if (dev->mt76.usb.rx_aggr) {
+		mt76_set(dev, MT_UDMA_WLCFG_0, MT_WL_RX_AGG_EN);
+		mt76_rmw(dev, MT_UDMA_WLCFG_0,
+			 MT_WL_RX_AGG_TO | MT_WL_RX_AGG_LMT,
+			 FIELD_PREP(MT_WL_RX_AGG_TO,
+				    MT792X_USB_RX_AGG_TIMEOUT) |
+			 FIELD_PREP(MT_WL_RX_AGG_LMT,
+				    MT792X_USB_RX_AGG_LIMIT));
+		mt76_rmw(dev, MT_UDMA_WLCFG_1, MT_WL_RX_AGG_PKT_LMT,
+			 FIELD_PREP(MT_WL_RX_AGG_PKT_LMT,
+				    MT792X_USB_RX_AGG_PKT_LIMIT));
+	} else {
+		mt76_clear(dev, MT_UDMA_WLCFG_0, MT_WL_RX_AGG_EN |
+			   MT_WL_RX_AGG_TO | MT_WL_RX_AGG_LMT);
+		mt76_clear(dev, MT_UDMA_WLCFG_1, MT_WL_RX_AGG_PKT_LMT);
+	}
 
 	if (resume)
 		return 0;
