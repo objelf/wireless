@@ -634,6 +634,8 @@ next:
 	mt76_put_page_pool_buf(urb->transfer_buffer, false);
 	urb->transfer_buffer = NULL;
 
+	dev_info(dev->dev, "USB RX aggr: frames=%d\n", nframes);
+
 	return max(nframes, 1);
 }
 
@@ -1293,6 +1295,8 @@ static void mt76u_tx_kick_aggr(struct mt76_dev *dev, struct mt76_queue *q)
 				    mt76u_complete_tx_aggr, e);
 		if (e->aggr_buf)
 			urb->transfer_buffer = e->aggr_buf;
+
+		dev_info(dev->dev, "USB TX aggr: frames=%u\n", e->aggr_len);
 
 		trace_submit_urb(dev, urb);
 		err = usb_submit_urb(urb, GFP_ATOMIC);
