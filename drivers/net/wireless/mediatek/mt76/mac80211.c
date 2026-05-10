@@ -615,7 +615,6 @@ int mt76_create_page_pool(struct mt76_dev *dev, struct mt76_queue *q)
 {
 	bool is_qrx = mt76_queue_is_rx(dev, q);
 	struct page_pool_params pp_params = {
-		.order = 0,
 		.flags = 0,
 		.nid = NUMA_NO_NODE,
 		.dev = dev->dma_dev,
@@ -625,6 +624,9 @@ int mt76_create_page_pool(struct mt76_dev *dev, struct mt76_queue *q)
 	/* Allocate page_pools just for rx/wed_tx_free queues */
 	if (!is_qrx && !mt76_queue_is_wed_tx_free(q))
 		return 0;
+
+	if (q->buf_size > PAGE_SIZE)
+		pp_params.order = get_order(q->buf_size);
 
 	switch (idx) {
 	case MT_RXQ_MAIN:
