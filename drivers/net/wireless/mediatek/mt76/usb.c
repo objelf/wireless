@@ -15,6 +15,26 @@ static bool disable_usb_sg;
 module_param_named(disable_usb_sg, disable_usb_sg, bool, 0644);
 MODULE_PARM_DESC(disable_usb_sg, "Disable usb scatter-gather support");
 
+static int mt76u_tx_setup_buffers(struct mt76_dev *dev, struct sk_buff *skb,
+				  struct urb *urb);
+static void mt76u_tx_reclaim_aggr(struct mt76_dev *dev, struct mt76_queue *q,
+				  struct mt76_queue_entry *entry);
+
+static bool mt76u_use_tx_aggr(struct mt76_dev *dev, struct mt76_queue *q)
+{
+	int i;
+
+	if (!dev->usb.tx_aggr || !q)
+		return false;
+
+	for (i = 0; i <= MT_TXQ_PSD; i++) {
+		if (dev->phy.q_tx[i] == q)
+			return true;
+	}
+
+	return false;
+}
+
 static bool mt76u_tx_blocked(struct mt76_dev *dev)
 {
 	return test_bit(MT76_RESET, &dev->phy.state) ||
@@ -907,13 +927,18 @@ static void mt76u_status_worker(struct mt76_worker *w)
 			continue;
 
 		while (q->queued > 0) {
-			if (!q->entry[q->tail].done)
+			struct mt76_queue_entry *e = &q->entry[q->tail];
+
+			if (!e->done)
 				break;
 
-			entry = q->entry[q->tail];
-			q->entry[q->tail].done = false;
-
-			mt76_queue_tx_complete(dev, q, &entry);
+			if (mt76u_use_tx_aggr(dev, q)) {
+				mt76u_tx_reclaim_aggr(dev, q, e);
+			} else {
+				e->done = false;
+				entry = *e;
+				mt76_queue_tx_complete(dev, q, &entry);
+			}
 		}
 
 		if (!q->queued)
@@ -964,6 +989,152 @@ static void mt76u_complete_tx(struct urb *urb)
 	mt76_worker_schedule(&dev->usb.status_worker);
 }
 
+#define MT76U_TX_AGGR_MAX_LEN		(32 * 1024)
+#define MT76U_TX_AGGR_TAIL_LEN		4
+
+static void mt76u_complete_tx_aggr(struct urb *urb)
+{
+	struct mt76_dev *dev = dev_get_drvdata(&urb->dev->dev);
+	struct mt76_queue_entry *e = urb->context;
+	struct mt76_queue *q = NULL;
+	unsigned int i;
+
+	if (mt76u_urb_error(urb) && !mt76u_tx_blocked(dev))
+		dev_err(dev->dev, "tx aggr urb failed: %d\n", urb->status);
+
+	for (i = 0; i < ARRAY_SIZE(dev->phy.q_tx); i++) {
+		struct mt76_queue *tmp = dev->phy.q_tx[i];
+
+		if (!tmp || !tmp->entry)
+			continue;
+
+		if (e >= tmp->entry && e < tmp->entry + tmp->ndesc) {
+			q = tmp;
+			break;
+		}
+	}
+
+	if (!q) {
+		e->done = true;
+		mt76_worker_schedule(&dev->usb.status_worker);
+		return;
+	}
+
+	for (i = 0; i < max_t(u8, READ_ONCE(e->aggr_len), 1); i++) {
+		struct mt76_queue_entry *iter;
+		unsigned int idx;
+
+		idx = (e - q->entry + i) % q->ndesc;
+		iter = &q->entry[idx];
+		iter->done = true;
+	}
+
+	mt76_worker_schedule(&dev->usb.status_worker);
+}
+
+static int
+mt76u_tx_setup_aggr_buffers(struct mt76_dev *dev, struct mt76_queue *q,
+			    struct mt76_queue_entry *e, struct urb *urb)
+{
+	u16 idx = q->first;
+	u16 total = 0;
+	u16 frame_len, aligned_len;
+	u8 nframes = 0, aggr_len;
+	unsigned int i;
+	void *buf;
+
+	e->aggr_len = 1;
+	e->aggr_buf = NULL;
+
+	while (idx != q->head) {
+		struct mt76_queue_entry *iter = &q->entry[idx];
+
+		if (!iter->skb || iter->skb->len < MT76U_TX_AGGR_TAIL_LEN)
+			break;
+
+		frame_len = iter->skb->len - MT76U_TX_AGGR_TAIL_LEN;
+		aligned_len = ALIGN(frame_len, 4);
+		if (total + aligned_len + MT76U_TX_AGGR_TAIL_LEN >
+		    MT76U_TX_AGGR_MAX_LEN)
+			break;
+
+		total += aligned_len;
+		nframes++;
+		idx = (idx + 1) % q->ndesc;
+	}
+
+	if (nframes <= 1)
+		return mt76u_tx_setup_buffers(dev, e->skb, urb);
+
+	aggr_len = nframes;
+	total += MT76U_TX_AGGR_TAIL_LEN;
+
+	buf = kmalloc(total, GFP_ATOMIC);
+	if (!buf)
+		return mt76u_tx_setup_buffers(dev, e->skb, urb);
+
+	idx = q->first;
+	total = 0;
+
+	for (i = 0; i < aggr_len; i++) {
+		struct mt76_queue_entry *iter = &q->entry[idx];
+
+		if (WARN_ON(!iter->skb ||
+			    iter->skb->len < MT76U_TX_AGGR_TAIL_LEN)) {
+			kfree(buf);
+			return mt76u_tx_setup_buffers(dev, e->skb, urb);
+		}
+
+		frame_len = iter->skb->len - MT76U_TX_AGGR_TAIL_LEN;
+		aligned_len = ALIGN(frame_len, 4);
+
+		memcpy(buf + total, iter->skb->data, frame_len);
+		if (aligned_len > frame_len)
+			memset(buf + total + frame_len, 0,
+			       aligned_len - frame_len);
+
+		total += aligned_len;
+		idx = (idx + 1) % q->ndesc;
+	}
+
+	memset(buf + total, 0, MT76U_TX_AGGR_TAIL_LEN);
+	total += MT76U_TX_AGGR_TAIL_LEN;
+
+	e->aggr_len = aggr_len;
+	e->aggr_buf = buf;
+
+	urb->num_sgs = 0;
+	urb->transfer_dma = 0;
+	urb->transfer_buffer = buf;
+	urb->transfer_buffer_length = total;
+
+	return 0;
+}
+
+static void
+mt76u_tx_reclaim_aggr(struct mt76_dev *dev, struct mt76_queue *q,
+		      struct mt76_queue_entry *entry)
+{
+	struct mt76_queue_entry tx_entry;
+	void *aggr_buf = entry->aggr_buf;
+	u8 nframes = entry->aggr_len ?: 1;
+	int i;
+
+	nframes = min_t(u16, nframes, q->queued);
+	entry->aggr_buf = NULL;
+	entry->aggr_len = 1;
+
+	for (i = 0; i < nframes; i++) {
+		struct mt76_queue_entry *e = &q->entry[q->tail];
+
+		e->done = false;
+		tx_entry = *e;
+		mt76_queue_tx_complete(dev, q, &tx_entry);
+	}
+
+	kfree(aggr_buf);
+}
+
 static int
 mt76u_tx_setup_buffers(struct mt76_dev *dev, struct sk_buff *skb,
 		       struct urb *urb)
@@ -984,9 +1155,9 @@ mt76u_tx_setup_buffers(struct mt76_dev *dev, struct sk_buff *skb,
 }
 
 static int
-mt76u_tx_queue_skb(struct mt76_phy *phy, struct mt76_queue *q,
-		   enum mt76_txq_id qid, struct sk_buff *skb,
-		   struct mt76_wcid *wcid, struct ieee80211_sta *sta)
+mt76u_tx_queue_skb_legacy(struct mt76_phy *phy, struct mt76_queue *q,
+			  enum mt76_txq_id qid, struct sk_buff *skb,
+			  struct mt76_wcid *wcid, struct ieee80211_sta *sta)
 {
 	struct mt76_tx_info tx_info = {
 		.skb = skb,
@@ -1021,12 +1192,65 @@ mt76u_tx_queue_skb(struct mt76_phy *phy, struct mt76_queue *q,
 	return idx;
 }
 
-static void mt76u_tx_kick(struct mt76_dev *dev, struct mt76_queue *q)
+static int
+mt76u_tx_queue_skb_aggr(struct mt76_phy *phy, struct mt76_queue *q,
+			enum mt76_txq_id qid, struct sk_buff *skb,
+			struct mt76_wcid *wcid, struct ieee80211_sta *sta)
+{
+	struct mt76_tx_info tx_info = {
+		.skb = skb,
+	};
+	struct mt76_dev *dev = phy->dev;
+	u16 idx = q->head;
+	int err;
+
+	if (q->queued == q->ndesc)
+		return -ENOSPC;
+
+	skb->prev = NULL;
+	skb->next = NULL;
+	err = dev->drv->tx_prepare_skb(dev, NULL, qid, wcid, sta, &tx_info);
+	if (err < 0)
+		return err;
+
+	q->head = (q->head + 1) % q->ndesc;
+	q->entry[idx].skb = tx_info.skb;
+	q->entry[idx].wcid = 0xffff;
+	q->entry[idx].aggr_len = 1;
+	q->entry[idx].aggr_buf = NULL;
+	q->queued++;
+
+	return idx;
+}
+
+static int
+mt76u_tx_queue_skb(struct mt76_phy *phy, struct mt76_queue *q,
+		   enum mt76_txq_id qid, struct sk_buff *skb,
+		   struct mt76_wcid *wcid, struct ieee80211_sta *sta)
+{
+	struct mt76_dev *dev = phy->dev;
+
+	if (mt76u_tx_blocked(dev))
+		return -ESHUTDOWN;
+
+	if (mt76u_use_tx_aggr(dev, q))
+		return mt76u_tx_queue_skb_aggr(phy, q, qid, skb, wcid, sta);
+
+	return mt76u_tx_queue_skb_legacy(phy, q, qid, skb, wcid, sta);
+}
+
+static void mt76u_tx_kick_legacy(struct mt76_dev *dev, struct mt76_queue *q)
 {
 	struct urb *urb;
 	int err;
 
+	if (mt76u_tx_blocked(dev))
+		return;
+
 	while (q->first != q->head) {
+		if (mt76u_tx_blocked(dev))
+			break;
+
 		urb = q->entry[q->first].urb;
 
 		trace_submit_urb(dev, urb);
@@ -1041,6 +1265,63 @@ static void mt76u_tx_kick(struct mt76_dev *dev, struct mt76_queue *q)
 		}
 		q->first = (q->first + 1) % q->ndesc;
 	}
+}
+
+static void mt76u_tx_kick_aggr(struct mt76_dev *dev, struct mt76_queue *q)
+{
+	struct mt76_queue_entry *e;
+	struct urb *urb;
+	int err;
+
+	if (mt76u_tx_blocked(dev))
+		return;
+
+	while (q->queued > 0 && q->first != q->head) {
+		if (mt76u_tx_blocked(dev))
+			break;
+
+		e = &q->entry[q->first];
+		urb = e->urb;
+		err = mt76u_tx_setup_aggr_buffers(dev, q, e, urb);
+		if (err < 0)
+			break;
+
+		if (!e->aggr_buf)
+			e->aggr_len = 1;
+
+		mt76u_fill_bulk_urb(dev, USB_DIR_OUT, q->ep, urb,
+				    mt76u_complete_tx_aggr, e);
+		if (e->aggr_buf)
+			urb->transfer_buffer = e->aggr_buf;
+
+		trace_submit_urb(dev, urb);
+		err = usb_submit_urb(urb, GFP_ATOMIC);
+		if (err < 0) {
+			if (err == -ENODEV)
+				set_bit(MT76_REMOVED, &dev->phy.state);
+			else
+				dev_err(dev->dev,
+					"tx aggr urb submit failed:%d\n",
+					err);
+
+			kfree(e->aggr_buf);
+			e->aggr_buf = NULL;
+			e->aggr_len = 1;
+			break;
+		}
+
+		q->first = (q->first + e->aggr_len) % q->ndesc;
+	}
+}
+
+static void mt76u_tx_kick(struct mt76_dev *dev, struct mt76_queue *q)
+{
+	if (mt76u_use_tx_aggr(dev, q)) {
+		mt76u_tx_kick_aggr(dev, q);
+		return;
+	}
+
+	mt76u_tx_kick_legacy(dev, q);
 }
 
 static void
@@ -1165,8 +1446,19 @@ void mt76u_stop_tx(struct mt76_dev *dev)
 				continue;
 
 			while (q->queued > 0) {
-				entry = q->entry[q->tail];
-				q->entry[q->tail].done = false;
+				struct mt76_queue_entry *e = &q->entry[q->tail];
+
+				if (mt76u_use_tx_aggr(dev, q) &&
+				    (e->aggr_buf || e->aggr_len > 1)) {
+					mt76u_tx_reclaim_aggr(dev, q, e);
+					continue;
+				}
+
+				kfree(e->aggr_buf);
+				e->aggr_buf = NULL;
+				e->aggr_len = 1;
+				e->done = false;
+				entry = *e;
 				mt76_queue_tx_complete(dev, q, &entry);
 			}
 		}
