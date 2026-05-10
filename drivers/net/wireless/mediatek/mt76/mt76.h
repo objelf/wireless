@@ -223,6 +223,7 @@ struct mt76_queue_entry {
 	bool skip_buf0:1;
 	bool skip_buf1:1;
 	bool done:1;
+	struct mt76_queue *q;
 };
 
 struct mt76_queue_regs {
@@ -673,6 +674,10 @@ struct mt76_usb {
 	u8 out_ep[__MT_EP_OUT_MAX];
 	u8 in_ep[__MT_EP_IN_MAX];
 	bool sg_en;
+	bool rx_aggr;
+	int rx_aggr_align;
+	int rx_aggr_padding;
+	int rx_aggr_buf_size;
 
 	struct mt76u_mcu {
 		u8 *data;
