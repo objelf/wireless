@@ -40,7 +40,8 @@ struct sk_buff *mt76_mcu_get_response(struct mt76_dev *dev,
 	timeout = expires - jiffies;
 	wait_event_timeout(dev->mcu.wait,
 			   (!skb_queue_empty(&dev->mcu.res_q) ||
-			    test_bit(MT76_MCU_RESET, &dev->phy.state)),
+			    test_bit(MT76_MCU_RESET, &dev->phy.state) ||
+			    test_bit(MT76_REMOVED, &dev->phy.state)),
 			   timeout);
 	return skb_dequeue(&dev->mcu.res_q);
 }
@@ -81,6 +82,11 @@ int mt76_mcu_skb_send_and_get_msg(struct mt76_dev *dev, struct sk_buff *skb,
 	if (mt76_is_sdio(dev))
 		if (test_bit(MT76_RESET, &dev->phy.state) && atomic_read(&dev->bus_hung))
 			return -EIO;
+
+	if (test_bit(MT76_REMOVED, &dev->phy.state)) {
+		dev_kfree_skb(skb);
+		return -ENODEV;
+	}
 
 	if (ret_skb)
 		*ret_skb = NULL;
