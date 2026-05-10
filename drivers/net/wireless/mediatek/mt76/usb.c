@@ -15,6 +15,13 @@ static bool disable_usb_sg;
 module_param_named(disable_usb_sg, disable_usb_sg, bool, 0644);
 MODULE_PARM_DESC(disable_usb_sg, "Disable usb scatter-gather support");
 
+static bool mt76u_tx_blocked(struct mt76_dev *dev)
+{
+	return test_bit(MT76_RESET, &dev->phy.state) ||
+	       test_bit(MT76_MCU_RESET, &dev->phy.state) ||
+	       test_bit(MT76_REMOVED, &dev->phy.state);
+}
+
 int __mt76u_vendor_request(struct mt76_dev *dev, u8 req, u8 req_type,
 			   u16 val, u16 offset, void *buf, size_t len)
 {
@@ -860,6 +867,9 @@ mt76u_tx_queue_skb(struct mt76_phy *phy, struct mt76_queue *q,
 	struct mt76_dev *dev = phy->dev;
 	u16 idx = q->head;
 	int err;
+
+	if (mt76u_tx_blocked(dev))
+		return -ESHUTDOWN;
 
 	if (q->queued == q->ndesc)
 		return -ENOSPC;
