@@ -673,8 +673,13 @@ struct mt76_usb {
 
 	struct work_struct stat_work;
 
+	atomic_t rx_urb_pending;
+	atomic_t tx_urb_pending;
+	wait_queue_head_t urb_wait;
+
 	u8 out_ep[__MT_EP_OUT_MAX];
 	u8 in_ep[__MT_EP_IN_MAX];
+	void (*ctrl_timeout)(struct mt76_dev *dev, int err);
 	bool sg_en;
 	bool tx_aggr;
 	bool rx_aggr;
@@ -1881,6 +1886,7 @@ int mt76u_alloc_queues(struct mt76_dev *dev);
 void mt76u_stop_tx(struct mt76_dev *dev);
 void mt76u_stop_rx(struct mt76_dev *dev);
 int mt76u_resume_rx(struct mt76_dev *dev);
+int mt76u_wait_urbs_idle(struct mt76_dev *dev, unsigned int timeout_ms);
 void mt76u_queues_deinit(struct mt76_dev *dev);
 
 int mt76s_init(struct mt76_dev *dev, struct sdio_func *func,

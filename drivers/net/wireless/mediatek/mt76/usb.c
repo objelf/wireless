@@ -42,6 +42,46 @@ static bool mt76u_tx_blocked(struct mt76_dev *dev)
 	       test_bit(MT76_REMOVED, &dev->phy.state);
 }
 
+static void mt76u_urb_complete(struct mt76_dev *dev, bool tx)
+{
+	atomic_t *pending = tx ? &dev->usb.tx_urb_pending :
+				 &dev->usb.rx_urb_pending;
+
+	atomic_dec(pending);
+	wake_up(&dev->usb.urb_wait);
+}
+
+static int mt76u_submit_urb(struct mt76_dev *dev, struct urb *urb, bool tx)
+{
+	atomic_t *pending = tx ? &dev->usb.tx_urb_pending :
+				 &dev->usb.rx_urb_pending;
+	int err;
+
+	atomic_inc(pending);
+	err = usb_submit_urb(urb, GFP_ATOMIC);
+	if (err)
+		mt76u_urb_complete(dev, tx);
+
+	return err;
+}
+
+int mt76u_wait_urbs_idle(struct mt76_dev *dev, unsigned int timeout_ms)
+{
+	int ret;
+
+	ret = wait_event_timeout(dev->usb.urb_wait,
+				 !atomic_read(&dev->usb.rx_urb_pending) &&
+				 !atomic_read(&dev->usb.tx_urb_pending),
+				 msecs_to_jiffies(timeout_ms));
+
+	dev_info(dev->dev, "USB URB idle wait: rx=%d tx=%d timeout=%u ms ret=%d\n",
+		 atomic_read(&dev->usb.rx_urb_pending),
+		 atomic_read(&dev->usb.tx_urb_pending), timeout_ms, ret);
+
+	return ret ? 0 : -ETIMEDOUT;
+}
+EXPORT_SYMBOL_GPL(mt76u_wait_urbs_idle);
+
 int __mt76u_vendor_request(struct mt76_dev *dev, u8 req, u8 req_type,
 			   u16 val, u16 offset, void *buf, size_t len)
 {
@@ -57,6 +97,8 @@ int __mt76u_vendor_request(struct mt76_dev *dev, u8 req, u8 req_type,
 	for (i = 0; i < MT_VEND_REQ_MAX_RETRY; i++) {
 		if (test_bit(MT76_REMOVED, &dev->phy.state))
 			return -EIO;
+		if (dev->usb.ctrl_timeout && atomic_read(&dev->bus_hung))
+			return -EIO;
 
 		ret = usb_control_msg(udev, pipe, req, req_type, val,
 				      offset, buf, len, MT_VEND_REQ_TOUT_MS);
@@ -64,6 +106,14 @@ int __mt76u_vendor_request(struct mt76_dev *dev, u8 req, u8 req_type,
 			set_bit(MT76_REMOVED, &dev->phy.state);
 		if (ret >= 0 || ret == -ENODEV || ret == -EPROTO)
 			return ret;
+		if (ret == -ETIMEDOUT && dev->usb.ctrl_timeout) {
+			atomic_set(&dev->bus_hung, true);
+			dev_err_ratelimited(dev->dev,
+					    "vendor request req:%02x off:%04x timed out, marking bus hung\n",
+					    req, offset);
+			dev->usb.ctrl_timeout(dev, ret);
+			return ret;
+		}
 		usleep_range(5000, 10000);
 	}
 
@@ -697,6 +747,7 @@ static void mt76u_complete_rx(struct urb *urb)
 	bool wake = false;
 
 	trace_rx_urb(dev, urb);
+	mt76u_urb_complete(dev, false);
 
 	if (test_bit(MT76_REMOVED, &dev->phy.state))
 		return;
@@ -746,7 +797,7 @@ mt76u_submit_rx_buf(struct mt76_dev *dev, enum mt76_rxq_id qid,
 			    mt76u_complete_rx, urb->context);
 	trace_submit_urb(dev, urb);
 
-	return usb_submit_urb(urb, GFP_ATOMIC);
+	return mt76u_submit_urb(dev, urb, false);
 }
 
 static void
@@ -878,6 +929,7 @@ void mt76u_stop_rx(struct mt76_dev *dev)
 {
 	int i;
 
+	dev_info(dev->dev, "USB stop RX: begin\n");
 	mt76_worker_disable(&dev->usb.rx_worker);
 
 	mt76_for_each_q_rx(dev, i) {
@@ -887,6 +939,7 @@ void mt76u_stop_rx(struct mt76_dev *dev)
 		for (j = 0; j < q->ndesc; j++)
 			usb_poison_urb(q->entry[j].urb);
 	}
+	dev_info(dev->dev, "USB stop RX: done\n");
 }
 EXPORT_SYMBOL_GPL(mt76u_stop_rx);
 
@@ -984,6 +1037,8 @@ static void mt76u_complete_tx(struct urb *urb)
 	struct mt76_dev *dev = dev_get_drvdata(&urb->dev->dev);
 	struct mt76_queue_entry *e = urb->context;
 
+	mt76u_urb_complete(dev, true);
+
 	if (mt76u_urb_error(urb))
 		dev_err(dev->dev, "tx urb failed: %d\n", urb->status);
 	e->done = true;
@@ -1000,6 +1055,8 @@ static void mt76u_complete_tx_aggr(struct urb *urb)
 	struct mt76_queue_entry *e = urb->context;
 	struct mt76_queue *q = NULL;
 	unsigned int i;
+
+	mt76u_urb_complete(dev, true);
 
 	if (mt76u_urb_error(urb) && !mt76u_tx_blocked(dev))
 		dev_err(dev->dev, "tx aggr urb failed: %d\n", urb->status);
@@ -1256,7 +1313,7 @@ static void mt76u_tx_kick_legacy(struct mt76_dev *dev, struct mt76_queue *q)
 		urb = q->entry[q->first].urb;
 
 		trace_submit_urb(dev, urb);
-		err = usb_submit_urb(urb, GFP_ATOMIC);
+		err = mt76u_submit_urb(dev, urb, true);
 		if (err < 0) {
 			if (err == -ENODEV)
 				set_bit(MT76_REMOVED, &dev->phy.state);
@@ -1299,7 +1356,7 @@ static void mt76u_tx_kick_aggr(struct mt76_dev *dev, struct mt76_queue *q)
 		dev_info(dev->dev, "USB TX aggr: frames=%u\n", e->aggr_len);
 
 		trace_submit_urb(dev, urb);
-		err = usb_submit_urb(urb, GFP_ATOMIC);
+		err = mt76u_submit_urb(dev, urb, true);
 		if (err < 0) {
 			if (err == -ENODEV)
 				set_bit(MT76_REMOVED, &dev->phy.state);
@@ -1419,6 +1476,7 @@ void mt76u_stop_tx(struct mt76_dev *dev)
 {
 	int ret;
 
+	dev_info(dev->dev, "USB stop TX: begin\n");
 	mt76_worker_disable(&dev->usb.status_worker);
 
 	ret = wait_event_timeout(dev->tx_wait, !mt76_has_tx_pending(&dev->phy),
@@ -1476,6 +1534,7 @@ void mt76u_stop_tx(struct mt76_dev *dev)
 	mt76_worker_enable(&dev->usb.status_worker);
 
 	mt76_tx_status_check(dev, true);
+	dev_info(dev->dev, "USB stop TX: done\n");
 }
 EXPORT_SYMBOL_GPL(mt76u_stop_tx);
 
@@ -1514,6 +1573,9 @@ int __mt76u_init(struct mt76_dev *dev, struct usb_interface *intf,
 	int err;
 
 	INIT_WORK(&usb->stat_work, mt76u_tx_status_data);
+	atomic_set(&usb->rx_urb_pending, 0);
+	atomic_set(&usb->tx_urb_pending, 0);
+	init_waitqueue_head(&usb->urb_wait);
 
 	usb->data_len = usb_maxpacket(udev, usb_sndctrlpipe(udev, 0));
 	if (usb->data_len < 32)
