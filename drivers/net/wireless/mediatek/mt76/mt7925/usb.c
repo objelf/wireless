@@ -214,6 +214,15 @@ static int mt7925u_probe(struct usb_interface *usb_intf,
 		mdev->rev = (0x7927 << 16) | (mdev->rev & 0xff);
 	}
 
+	if (is_mt7927(mdev)) {
+		mdev->usb.tx_aggr = true;
+		mdev->usb.sg_en = false;
+		mdev->usb.rx_aggr = true;
+		mdev->usb.rx_aggr_align = 16;
+		mdev->usb.rx_aggr_padding = 12;
+		mdev->usb.rx_aggr_buf_size = 36 * 1024;
+	}
+
 	if (mt76_get_field(dev, MT_CONN_ON_MISC, MT_TOP_MISC2_FW_N9_RDY)) {
 		ret = mt792xu_wfsys_reset(dev);
 		if (ret)
