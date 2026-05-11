@@ -36,10 +36,14 @@
 
 #define MT_TMAC_CDTR(_band)		MT_WF_TMAC(_band, 0x090)
 #define MT_TMAC_ODTR(_band)		MT_WF_TMAC(_band, 0x094)
+#define MT792X_TMAC_CDTR(_band)		MT_WF_TMAC(_band, 0x0c8)
+#define MT792X_TMAC_ODTR(_band)		MT_WF_TMAC(_band, 0x0cc)
+
 #define MT_TIMEOUT_VAL_PLCP		GENMASK(15, 0)
 #define MT_TIMEOUT_VAL_CCA		GENMASK(31, 16)
 
 #define MT_TMAC_ICR0(_band)		MT_WF_TMAC(_band, 0x0a4)
+#define MT792X_TMAC_ICR0(_band)		MT_WF_TMAC(_band, 0x014)
 #define MT_IFS_EIFS			GENMASK(8, 0)
 #define MT_IFS_RIFS			GENMASK(14, 10)
 #define MT_IFS_SIFS			GENMASK(22, 16)
@@ -74,10 +78,15 @@
 
 #define MT_LPON_UTTR0(_band)		MT_WF_LPON(_band, 0x080)
 #define MT_LPON_UTTR1(_band)		MT_WF_LPON(_band, 0x084)
+#define MT792X_LPON_UTTR0(_band)	MT_WF_LPON(_band, 0x360)
+#define MT792X_LPON_UTTR1(_band)	MT_WF_LPON(_band, 0x364)
 
 #define MT_LPON_TCR(_band, n)		MT_WF_LPON(_band, 0x0a8 + (n) * 4)
+#define MT792X_LPON_TCR(_band, n)	MT_WF_LPON(_band, 0x0a8 + (n) * 0x40)
 #define MT_LPON_TCR_SW_MODE		GENMASK(1, 0)
 #define MT_LPON_TCR_SW_WRITE		BIT(0)
+#define MT_LPON_TCR_SW_ADJUST		BIT(1)
+#define MT_LPON_TCR_SW_READ		GENMASK(1, 0)
 
 /* ETBF: band 0(0x24000), band 1(0xa4000) */
 #define MT_WF_ETBF_BASE(_band)		((_band) ? 0x820fa000 : 0x820ea000)
@@ -255,6 +264,7 @@
 #define MT_WF_RMAC_MIB_RXTIME_EN	BIT(30)
 
 #define MT_WF_RMAC_MIB_AIRTIME14(_band)	MT_WF_RMAC(_band, 0x03b8)
+#define MT792X_WF_RMAC_MIB_AIRTIME14(_band)	MT_WF_RMAC(_band, 0x0398)
 #define MT_MIB_OBSSTIME_MASK		GENMASK(23, 0)
 #define MT_WF_RMAC_MIB_AIRTIME0(_band)	MT_WF_RMAC(_band, 0x0380)
 
