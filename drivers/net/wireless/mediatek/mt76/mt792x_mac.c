@@ -55,9 +55,10 @@ void mt792x_mac_set_timeing(struct mt792x_phy *phy)
 	reg_offset = FIELD_PREP(MT_TIMEOUT_VAL_PLCP, offset) |
 		     FIELD_PREP(MT_TIMEOUT_VAL_CCA, offset);
 
-	mt76_wr(dev, MT_TMAC_CDTR(0), cck + reg_offset);
-	mt76_wr(dev, MT_TMAC_ODTR(0), ofdm + reg_offset);
-	mt76_wr(dev, MT_TMAC_ICR0(0),
+	mt76_wr(dev, MT792X_TMAC_CDTR(0), cck + reg_offset);
+	mt76_wr(dev, MT792X_TMAC_ODTR(0), ofdm + reg_offset);
+	mt76_wr(dev, MT792X_TMAC_ICR0(0),
+
 		FIELD_PREP(MT_IFS_EIFS, 360) |
 		FIELD_PREP(MT_IFS_RIFS, 2) |
 		FIELD_PREP(MT_IFS_SIFS, sifs) |
@@ -233,7 +234,7 @@ mt792x_phy_update_channel(struct mt76_phy *mphy, int idx)
 				 MT_MIB_SDR36_TXTIME_MASK);
 	rx_time = mt76_get_field(dev, MT_MIB_SDR37(idx),
 				 MT_MIB_SDR37_RXTIME_MASK);
-	obss_time = mt76_get_field(dev, MT_WF_RMAC_MIB_AIRTIME14(idx),
+	obss_time = mt76_get_field(dev, MT792X_WF_RMAC_MIB_AIRTIME14(idx),
 				   MT_MIB_OBSSTIME_MASK);
 
 	nf = mt792x_phy_get_nf(phy, idx);

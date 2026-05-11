@@ -344,9 +344,10 @@ u64 mt792x_get_tsf(struct ieee80211_hw *hw, struct ieee80211_vif *vif)
 
 	n = omac_idx > HW_BSSID_MAX ? HW_BSSID_0 : omac_idx;
 	/* TSF software read */
-	mt76_set(dev, MT_LPON_TCR(0, n), MT_LPON_TCR_SW_MODE);
-	tsf.t32[0] = mt76_rr(dev, MT_LPON_UTTR0(0));
-	tsf.t32[1] = mt76_rr(dev, MT_LPON_UTTR1(0));
+	mt76_rmw(dev, MT792X_LPON_TCR(0, n), MT_LPON_TCR_SW_MODE,
+		 MT_LPON_TCR_SW_READ);
+	tsf.t32[0] = mt76_rr(dev, MT792X_LPON_UTTR0(0));
+	tsf.t32[1] = mt76_rr(dev, MT792X_LPON_UTTR1(0));
 
 	mt792x_mutex_release(dev);
 
@@ -369,10 +370,11 @@ void mt792x_set_tsf(struct ieee80211_hw *hw, struct ieee80211_vif *vif,
 	mt792x_mutex_acquire(dev);
 
 	n = omac_idx > HW_BSSID_MAX ? HW_BSSID_0 : omac_idx;
-	mt76_wr(dev, MT_LPON_UTTR0(0), tsf.t32[0]);
-	mt76_wr(dev, MT_LPON_UTTR1(0), tsf.t32[1]);
+	mt76_wr(dev, MT792X_LPON_UTTR0(0), tsf.t32[0]);
+	mt76_wr(dev, MT792X_LPON_UTTR1(0), tsf.t32[1]);
 	/* TSF software overwrite */
-	mt76_set(dev, MT_LPON_TCR(0, n), MT_LPON_TCR_SW_WRITE);
+	mt76_rmw(dev, MT792X_LPON_TCR(0, n), MT_LPON_TCR_SW_MODE,
+		 MT_LPON_TCR_SW_WRITE);
 
 	mt792x_mutex_release(dev);
 }
