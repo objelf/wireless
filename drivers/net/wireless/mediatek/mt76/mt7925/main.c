@@ -1682,6 +1682,45 @@ static void mt7925_set_rekey_data(struct ieee80211_hw *hw,
 }
 #endif /* CONFIG_PM */
 
+static void mt7925_sta_set_4addr(struct ieee80211_hw *hw,
+				 struct ieee80211_vif *vif,
+				 struct ieee80211_sta *sta,
+				 bool enabled)
+{
+	struct mt792x_sta *msta = (struct mt792x_sta *)sta->drv_priv;
+	struct mt792x_vif *mvif = (struct mt792x_vif *)vif->drv_priv;
+	struct mt792x_dev *dev = mt792x_hw_dev(hw);
+	unsigned long valid;
+	u8 i;
+
+	if (!msta->vif)
+		return;
+
+	mt792x_mutex_acquire(dev);
+
+	valid = ieee80211_vif_is_mld(vif) ? mvif->valid_links : BIT(0);
+
+	for_each_set_bit(i, &valid, IEEE80211_MLD_MAX_NUM_LINKS) {
+		struct mt792x_bss_conf *mconf;
+		struct mt792x_link_sta *mlink;
+
+		mconf = mt792x_vif_to_link(mvif, i);
+		mlink = mt792x_sta_to_link(msta, i);
+
+		if (enabled)
+			set_bit(MT_WCID_FLAG_4ADDR, &mlink->wcid.flags);
+		else
+			clear_bit(MT_WCID_FLAG_4ADDR, &mlink->wcid.flags);
+
+		if (!mlink->wcid.sta)
+			continue;
+
+		mt7925_mcu_wtbl_update_hdr_trans(dev, vif, mconf, mlink);
+	}
+
+	mt792x_mutex_release(dev);
+}
+
 static void mt7925_sta_set_decap_offload(struct ieee80211_hw *hw,
 					 struct ieee80211_vif *vif,
 					 struct ieee80211_sta *sta,
@@ -2489,6 +2528,7 @@ const struct ieee80211_ops mt7925_ops = {
 	.sta_state = mt76_sta_state,
 	.sta_pre_rcu_remove = mt76_sta_pre_rcu_remove,
 	.set_key = mt7925_set_key,
+	.sta_set_4addr = mt7925_sta_set_4addr,
 	.sta_set_decap_offload = mt7925_sta_set_decap_offload,
 #if IS_ENABLED(CONFIG_IPV6)
 	.ipv6_addr_change = mt7925_ipv6_addr_change,

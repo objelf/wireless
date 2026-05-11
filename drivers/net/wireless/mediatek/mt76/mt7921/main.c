@@ -1223,6 +1223,29 @@ static void mt7921_set_rekey_data(struct ieee80211_hw *hw,
 }
 #endif /* CONFIG_PM */
 
+static void mt7921_sta_set_4addr(struct ieee80211_hw *hw,
+				 struct ieee80211_vif *vif,
+				 struct ieee80211_sta *sta,
+				 bool enabled)
+{
+	struct mt792x_sta *msta = (struct mt792x_sta *)sta->drv_priv;
+	struct mt792x_dev *dev = mt792x_hw_dev(hw);
+	struct mt76_wcid *wcid = &msta->deflink.wcid;
+
+	mt792x_mutex_acquire(dev);
+
+	if (enabled)
+		set_bit(MT_WCID_FLAG_4ADDR, &wcid->flags);
+	else
+		clear_bit(MT_WCID_FLAG_4ADDR, &wcid->flags);
+
+	if (wcid->sta)
+		mt76_connac_mcu_sta_update_hdr_trans(&dev->mt76, vif, wcid,
+						     MCU_UNI_CMD(STA_REC_UPDATE));
+
+	mt792x_mutex_release(dev);
+}
+
 static void mt7921_sta_set_decap_offload(struct ieee80211_hw *hw,
 					 struct ieee80211_vif *vif,
 					 struct ieee80211_sta *sta,
@@ -1590,6 +1613,7 @@ const struct ieee80211_ops mt7921_ops = {
 	.sta_state = mt7921_sta_state,
 	.sta_pre_rcu_remove = mt76_sta_pre_rcu_remove,
 	.set_key = mt7921_set_key,
+	.sta_set_4addr = mt7921_sta_set_4addr,
 	.sta_set_decap_offload = mt7921_sta_set_decap_offload,
 #if IS_ENABLED(CONFIG_IPV6)
 	.ipv6_addr_change = mt7921_ipv6_addr_change,
