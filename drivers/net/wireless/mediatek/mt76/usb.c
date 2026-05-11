@@ -665,7 +665,18 @@ static int mt76u_process_rx_agg_entry(struct mt76_dev *dev, struct urb *urb)
 			break;
 		}
 
-		agg_len = ALIGN(frame_len, align) + padding;
+		if (dev->usb.rx_aggr_len) {
+			agg_len = dev->usb.rx_aggr_len(dev,
+						       data + offset + head_room,
+						       len);
+			if (agg_len <= 0)
+				break;
+
+			agg_len += head_room;
+		} else {
+			agg_len = ALIGN(frame_len, align) + padding;
+		}
+
 		if (dev->drv->rx_check &&
 		    !dev->drv->rx_check(dev, data + offset + head_room, len))
 			goto next;
