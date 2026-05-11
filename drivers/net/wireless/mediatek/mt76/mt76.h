@@ -683,6 +683,7 @@ struct mt76_usb {
 	bool sg_en;
 	bool tx_aggr;
 	bool rx_aggr;
+	int (*rx_aggr_len)(struct mt76_dev *dev, void *data, int len);
 	int rx_aggr_align;
 	int rx_aggr_padding;
 	int rx_aggr_buf_size;

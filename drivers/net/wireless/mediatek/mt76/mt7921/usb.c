@@ -86,6 +86,23 @@ static int mt7921u_mcu_init(struct mt792x_dev *dev)
 	return 0;
 }
 
+static int mt7921u_rx_aggr_len(struct mt76_dev *mdev, void *data, int len)
+{
+	__le32 *rxd = data;
+	enum rx_pkt_type type;
+
+	(void)mdev;
+
+	type = le32_get_bits(rxd[0], MT_RXD0_PKT_TYPE);
+	switch (type) {
+	case PKT_TYPE_NORMAL:
+	case PKT_TYPE_RX_REPORT:
+		return ALIGN(len, 8) + 4;
+	default:
+		return ALIGN(len, 4);
+	}
+}
+
 static int mt7921u_mac_reset(struct mt792x_dev *dev)
 {
 	int err;
@@ -217,6 +234,12 @@ static int mt7921u_probe(struct usb_interface *usb_intf,
 	mdev->rev = (mt76_rr(dev, MT_HW_CHIPID) << 16) |
 		    (mt76_rr(dev, MT_HW_REV) & 0xff);
 	dev_dbg(mdev->dev, "ASIC revision: %04x\n", mdev->rev);
+
+	mdev->usb.tx_aggr = true;
+	mdev->usb.sg_en = false;
+	mdev->usb.rx_aggr = true;
+	mdev->usb.rx_aggr_len = mt7921u_rx_aggr_len;
+	mdev->usb.rx_aggr_buf_size = 36 * 1024;
 
 	if (mt76_get_field(dev, MT_CONN_ON_MISC, MT_TOP_MISC2_FW_N9_RDY)) {
 		ret = mt792xu_wfsys_reset(dev);
