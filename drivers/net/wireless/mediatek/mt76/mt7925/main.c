@@ -2130,8 +2130,10 @@ static void mt7925_link_info_changed(struct ieee80211_hw *hw,
 		mconf->mt76.beacon_rates_idx =
 				mt7925_get_rates_table(hw, vif, true, false);
 
-		mt7925_mcu_uni_add_beacon_offload(dev, hw, vif,
-						  info->enable_beacon);
+		if (vif->type == NL80211_IFTYPE_AP ||
+		    vif->type == NL80211_IFTYPE_MESH_POINT)
+			mt7925_mcu_uni_add_beacon_offload(dev, hw, vif,
+							   info->enable_beacon);
 	}
 
 	/* ensure that enable txcmd_mode after bss_info */

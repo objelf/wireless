@@ -724,9 +724,12 @@ static void mt7921_bss_info_changed(struct ieee80211_hw *hw,
 	}
 
 	if (changed & (BSS_CHANGED_BEACON |
-		       BSS_CHANGED_BEACON_ENABLED))
+		       BSS_CHANGED_BEACON_ENABLED)) {
+		if (vif->type == NL80211_IFTYPE_AP ||
+		    vif->type == NL80211_IFTYPE_MESH_POINT)
 		mt7921_mcu_uni_add_beacon_offload(dev, hw, vif,
 						  info->enable_beacon);
+	}
 
 	/* ensure that enable txcmd_mode after bss_info */
 	if (changed & (BSS_CHANGED_QOS | BSS_CHANGED_BEACON_ENABLED))

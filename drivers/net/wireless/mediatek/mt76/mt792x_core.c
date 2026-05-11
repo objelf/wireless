@@ -14,7 +14,8 @@ static const struct ieee80211_iface_limit if_limits[] = {
 	},
 	{
 		.max = 1,
-		.types = BIT(NL80211_IFTYPE_AP)
+		.types = BIT(NL80211_IFTYPE_AP) |
+			 BIT(NL80211_IFTYPE_MESH_POINT)
 	}
 };
 
@@ -52,7 +53,8 @@ static const struct ieee80211_iface_limit if_limits_chanctx_scc[] = {
 	},
 	{
 		.max = 1,
-		.types = BIT(NL80211_IFTYPE_AP)
+		.types = BIT(NL80211_IFTYPE_AP) |
+			 BIT(NL80211_IFTYPE_MESH_POINT)
 	},
 	{
 		.max = 1,
@@ -698,6 +700,7 @@ int mt792x_init_wiphy(struct ieee80211_hw *hw)
 			  WIPHY_FLAG_4ADDR_STATION);
 	wiphy->interface_modes = BIT(NL80211_IFTYPE_STATION) |
 				 BIT(NL80211_IFTYPE_AP) |
+				 BIT(NL80211_IFTYPE_MESH_POINT) |
 				 BIT(NL80211_IFTYPE_P2P_CLIENT) |
 				 BIT(NL80211_IFTYPE_P2P_GO) |
 				 BIT(NL80211_IFTYPE_P2P_DEVICE);

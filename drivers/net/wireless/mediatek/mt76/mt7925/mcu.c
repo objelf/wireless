@@ -1782,7 +1782,8 @@ mt7925_mcu_sta_amsdu_tlv(struct sk_buff *skb,
 	struct tlv *tlv;
 
 	if (vif->type != NL80211_IFTYPE_STATION &&
-	    vif->type != NL80211_IFTYPE_AP)
+	    vif->type != NL80211_IFTYPE_AP &&
+	    vif->type != NL80211_IFTYPE_MESH_POINT)
 		return;
 
 	if (!link_sta->agg.max_amsdu_len)
