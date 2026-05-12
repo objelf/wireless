@@ -1038,6 +1038,12 @@ void mt7921_scan_work(struct work_struct *work)
 			break;
 
 		rxd = (struct mt76_connac2_mcu_rxd *)skb->data;
+		dev_info(phy->mt76->dev->dev,
+			 "scan event work: eid=0x%x seq=%u option=0x%x scanning=%d qlen=%u skb_len=%u\n",
+			 rxd->eid, rxd->seq, rxd->option,
+			 test_bit(MT76_HW_SCANNING, &phy->mt76->state),
+			 skb_queue_len(&phy->scan_event_list), skb->len);
+
 		if (rxd->eid == MCU_EVENT_SCHED_SCAN_DONE) {
 			ieee80211_sched_scan_results(phy->mt76->hw);
 		} else if (test_and_clear_bit(MT76_HW_SCANNING,
@@ -1046,7 +1052,14 @@ void mt7921_scan_work(struct work_struct *work)
 				.aborted = false,
 			};
 
+			dev_info(phy->mt76->dev->dev,
+				 "scan completed: eid=0x%x seq=%u aborted=%d\n",
+				 rxd->eid, rxd->seq, info.aborted);
 			ieee80211_scan_completed(phy->mt76->hw, &info);
+		} else {
+			dev_info(phy->mt76->dev->dev,
+				 "scan event ignored: eid=0x%x seq=%u hw scanning not set\n",
+				 rxd->eid, rxd->seq);
 		}
 		dev_kfree_skb(skb);
 	}
@@ -1060,9 +1073,19 @@ mt7921_hw_scan(struct ieee80211_hw *hw, struct ieee80211_vif *vif,
 	struct mt76_phy *mphy = hw->priv;
 	int err;
 
+	dev_info(dev->mt76.dev,
+		 "hw scan start: channels=%u ssids=%u flags=0x%x scan_6ghz=%d first_part=%d n_6ghz_params=%u scanning=%d\n",
+		 req->req.n_channels, req->req.n_ssids, req->req.flags,
+		 req->req.scan_6ghz, req->req.first_part,
+		 req->req.n_6ghz_params,
+		 test_bit(MT76_HW_SCANNING, &mphy->state));
+
 	mt792x_mutex_acquire(dev);
 	err = mt76_connac_mcu_hw_scan(mphy, vif, req);
 	mt792x_mutex_release(dev);
+
+	dev_info(dev->mt76.dev, "hw scan start result: err=%d scanning=%d\n",
+		 err, test_bit(MT76_HW_SCANNING, &mphy->state));
 
 	return err;
 }
