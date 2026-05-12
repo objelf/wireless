@@ -167,6 +167,24 @@ mt7921_mcu_scan_event(struct mt792x_dev *dev, struct sk_buff *skb)
 {
 	struct mt76_phy *mphy = &dev->mt76.phy;
 	struct mt792x_phy *phy = mphy->priv;
+	struct mt76_connac2_mcu_rxd *rxd;
+	struct mt76_connac_hw_scan_done *scan_done = NULL;
+	bool scanning;
+	u8 scan_seq = 0;
+
+	rxd = (struct mt76_connac2_mcu_rxd *)skb->data;
+	scanning = test_bit(MT76_HW_SCANNING, &mphy->state);
+
+	if (rxd->eid == MCU_EVENT_SCAN_DONE &&
+	    skb->len >= sizeof(*rxd) + sizeof(*scan_done)) {
+		scan_done = (struct mt76_connac_hw_scan_done *)rxd->tlv;
+		scan_seq = scan_done->seq_num;
+	}
+
+	dev_info(dev->mt76.dev,
+		 "scan event enqueue: eid=0x%x seq=%u option=0x%x scan_seq=0x%x scanning=%d qlen=%u skb_len=%u\n",
+		 rxd->eid, rxd->seq, rxd->option, scan_seq, scanning,
+		 skb_queue_len(&phy->scan_event_list), skb->len);
 
 	spin_lock_bh(&dev->mt76.lock);
 	__skb_queue_tail(&phy->scan_event_list, skb);
