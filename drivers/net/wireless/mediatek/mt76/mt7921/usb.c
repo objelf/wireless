@@ -98,20 +98,24 @@ static int mt7921u_rx_aggr_len(struct mt76_dev *mdev, void *data, int len)
 
 	type = le32_get_bits(rxd[0], MT_RXD0_PKT_TYPE);
 	flag = le32_get_bits(rxd[0], MT_RXD0_PKT_FLAG);
-	switch (type) {
-	case PKT_TYPE_NORMAL:
-	case PKT_TYPE_RX_REPORT:
+	if (is_mt7902(mdev)) {
 		agg_len = ALIGN(len, 8) + 4;
-		break;
-	default:
-		agg_len = ALIGN(len, 4);
-		break;
+	} else {
+		switch (type) {
+		case PKT_TYPE_NORMAL:
+		case PKT_TYPE_RX_REPORT:
+			agg_len = ALIGN(len, 8) + 4;
+			break;
+		default:
+			agg_len = ALIGN(len, 4);
+			break;
+		}
 	}
 
 	if (type != PKT_TYPE_NORMAL)
 		dev_info(mdev->dev,
-			 "mt7921u rx aggr len=%d type=%u flag=0x%x agg_len=%d rxd0=0x%08x\n",
-			 len, type, flag, agg_len, rxd0);
+			 "mt7921u rx aggr len=%d type=%u flag=0x%x agg_len=%d rxd0=0x%08x chip=0x%04x\n",
+			 len, type, flag, agg_len, rxd0, mt76_chip(mdev));
 
 	return agg_len;
 }
