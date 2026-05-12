@@ -637,12 +637,39 @@ mt76u_build_rx_skb_aggr(struct mt76_dev *dev, void *data, int data_len,
 	return skb;
 }
 
+static void
+mt76u_dump_rx_agg(struct mt76_dev *dev, u8 *data, int actual_length,
+		  int offset, int head_room, int len, int frame_len,
+		  u32 rxd0, int prev_offset, int prev_len,
+		  int prev_frame_len, int prev_agg_len, u32 prev_rxd0)
+{
+	int remain = actual_length - offset;
+	int dump_len = min_t(int, remain, 64);
+
+	dev_info(dev->dev,
+		 "USB RX aggr debug: actual=%d offset=%d remain=%d head_room=%d len=%d frame_len=%d rxd0=0x%08x dump_len=%d data=%*ph\n",
+		 actual_length, offset, remain, head_room, len, frame_len,
+		 rxd0, dump_len, dump_len, data + offset);
+
+	if (prev_offset < 0)
+		return;
+
+	dump_len = min_t(int, actual_length - prev_offset, 64);
+	dev_info(dev->dev,
+		 "USB RX aggr debug prev: offset=%d len=%d frame_len=%d agg_len=%d rxd0=0x%08x dump_len=%d data=%*ph\n",
+		 prev_offset, prev_len, prev_frame_len, prev_agg_len,
+		 prev_rxd0, dump_len, dump_len, data + prev_offset);
+}
+
 static int mt76u_process_rx_agg_entry(struct mt76_dev *dev, struct urb *urb)
 {
 	int offset = 0, head_room, drv_flags = dev->drv->drv_flags;
 	int align = dev->usb.rx_aggr_align ?: 4;
 	int padding = dev->usb.rx_aggr_padding ?: 4;
 	u8 *data = urb->transfer_buffer;
+	int prev_frame_len = 0, prev_agg_len = 0, prev_offset = -1;
+	int prev_len = 0;
+	u32 prev_rxd0 = 0;
 	int min_len;
 	int nframes = 0;
 
@@ -666,6 +693,11 @@ static int mt76u_process_rx_agg_entry(struct mt76_dev *dev, struct urb *urb)
 				 "invalid USB RX aggregate: offset=%d actual=%d remain=%d head_room=%d rxd0=0x%08x\n",
 				 offset, urb->actual_length,
 				 urb->actual_length - offset, head_room, rxd0);
+			mt76u_dump_rx_agg(dev, data, urb->actual_length,
+					   offset, head_room, len, 0, rxd0,
+					   prev_offset, prev_len,
+					   prev_frame_len, prev_agg_len,
+					   prev_rxd0);
 			dev_warn_ratelimited(dev->dev,
 					     "invalid USB RX aggregate at offset %d\n",
 					     offset);
@@ -681,6 +713,11 @@ static int mt76u_process_rx_agg_entry(struct mt76_dev *dev, struct urb *urb)
 				 offset, urb->actual_length,
 				 urb->actual_length - offset, len, frame_len,
 				 head_room, rxd0);
+			mt76u_dump_rx_agg(dev, data, urb->actual_length,
+					   offset, head_room, len, frame_len,
+					   rxd0, prev_offset, prev_len,
+					   prev_frame_len, prev_agg_len,
+					   prev_rxd0);
 			dev_warn_ratelimited(dev->dev,
 					     "truncated USB RX aggregate at offset %d\n",
 					     offset);
@@ -711,6 +748,11 @@ static int mt76u_process_rx_agg_entry(struct mt76_dev *dev, struct urb *urb)
 		}
 
 next:
+		prev_offset = offset;
+		prev_len = len;
+		prev_frame_len = frame_len;
+		prev_agg_len = agg_len;
+		prev_rxd0 = get_unaligned_le32(data + offset + head_room);
 		offset += agg_len;
 	}
 

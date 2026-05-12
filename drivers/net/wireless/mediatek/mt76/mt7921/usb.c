@@ -92,12 +92,12 @@ static int mt7921u_rx_aggr_len(struct mt76_dev *mdev, void *data, int len)
 	enum rx_pkt_type type;
 	u32 rxd0 = le32_to_cpu(rxd[0]);
 	u32 flag;
+	u32 sw_type;
 	int agg_len;
-
-	(void)mdev;
 
 	type = le32_get_bits(rxd[0], MT_RXD0_PKT_TYPE);
 	flag = le32_get_bits(rxd[0], MT_RXD0_PKT_FLAG);
+	sw_type = le32_get_bits(rxd[0], MT_RXD0_SW_PKT_TYPE_MASK);
 	if (is_mt7902(mdev)) {
 		agg_len = ALIGN(len, 8) + 4;
 	} else {
@@ -106,6 +106,20 @@ static int mt7921u_rx_aggr_len(struct mt76_dev *mdev, void *data, int len)
 		case PKT_TYPE_RX_REPORT:
 			agg_len = ALIGN(len, 8) + 4;
 			break;
+		case PKT_TYPE_RX_EVENT:
+			if (test_bit(MT76_STATE_MCU_RUNNING, &mdev->phy.state) &&
+			    mt76_chip(mdev) == 0x7961 &&
+			    (sw_type & MT_RXD0_SW_PKT_TYPE_MAP) == 0x3800) {
+				agg_len = ALIGN(len, 8) + 4;
+				break;
+			}
+
+			if ((sw_type & MT_RXD0_SW_PKT_TYPE_MAP) ==
+			    MT_RXD0_SW_PKT_TYPE_FRAME) {
+				agg_len = ALIGN(len, 8) + 4;
+				break;
+			}
+			fallthrough;
 		default:
 			agg_len = ALIGN(len, 4);
 			break;
@@ -114,8 +128,9 @@ static int mt7921u_rx_aggr_len(struct mt76_dev *mdev, void *data, int len)
 
 	if (type != PKT_TYPE_NORMAL)
 		dev_info(mdev->dev,
-			 "mt7921u rx aggr len=%d type=%u flag=0x%x agg_len=%d rxd0=0x%08x chip=0x%04x\n",
-			 len, type, flag, agg_len, rxd0, mt76_chip(mdev));
+			 "mt7921u rx aggr len=%d type=%u flag=0x%x sw_type=0x%04x agg_len=%d rxd0=0x%08x chip=0x%04x\n",
+			 len, type, flag, sw_type, agg_len, rxd0,
+			 mt76_chip(mdev));
 
 	return agg_len;
 }
@@ -133,6 +148,7 @@ static int mt7921u_mac_reset(struct mt792x_dev *dev)
 
 	set_bit(MT76_RESET, &dev->mphy.state);
 	set_bit(MT76_MCU_RESET, &dev->mphy.state);
+	clear_bit(MT76_STATE_MCU_RUNNING, &dev->mphy.state);
 
 	wake_up(&dev->mt76.mcu.wait);
 	skb_queue_purge(&dev->mt76.mcu.res_q);
