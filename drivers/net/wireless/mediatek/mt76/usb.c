@@ -651,6 +651,12 @@ static int mt76u_process_rx_agg_entry(struct mt76_dev *dev, struct urb *urb)
 		len = mt76u_get_rx_entry_len(dev, data + offset,
 					     urb->actual_length - offset);
 		if (len < 0) {
+			u32 rxd0 = get_unaligned_le32(data + offset + head_room);
+
+			dev_info(dev->dev,
+				 "invalid USB RX aggregate: offset=%d actual=%d remain=%d head_room=%d rxd0=0x%08x\n",
+				 offset, urb->actual_length,
+				 urb->actual_length - offset, head_room, rxd0);
 			dev_warn_ratelimited(dev->dev,
 					     "invalid USB RX aggregate at offset %d\n",
 					     offset);
@@ -659,6 +665,13 @@ static int mt76u_process_rx_agg_entry(struct mt76_dev *dev, struct urb *urb)
 
 		frame_len = head_room + len;
 		if (frame_len > urb->actual_length - offset) {
+			u32 rxd0 = get_unaligned_le32(data + offset + head_room);
+
+			dev_info(dev->dev,
+				 "truncated USB RX aggregate: offset=%d actual=%d remain=%d len=%d frame_len=%d head_room=%d rxd0=0x%08x\n",
+				 offset, urb->actual_length,
+				 urb->actual_length - offset, len, frame_len,
+				 head_room, rxd0);
 			dev_warn_ratelimited(dev->dev,
 					     "truncated USB RX aggregate at offset %d\n",
 					     offset);

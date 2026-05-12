@@ -90,17 +90,30 @@ static int mt7921u_rx_aggr_len(struct mt76_dev *mdev, void *data, int len)
 {
 	__le32 *rxd = data;
 	enum rx_pkt_type type;
+	u32 rxd0 = le32_to_cpu(rxd[0]);
+	u32 flag;
+	int agg_len;
 
 	(void)mdev;
 
 	type = le32_get_bits(rxd[0], MT_RXD0_PKT_TYPE);
+	flag = le32_get_bits(rxd[0], MT_RXD0_PKT_FLAG);
 	switch (type) {
 	case PKT_TYPE_NORMAL:
 	case PKT_TYPE_RX_REPORT:
-		return ALIGN(len, 8) + 4;
+		agg_len = ALIGN(len, 8) + 4;
+		break;
 	default:
-		return ALIGN(len, 4);
+		agg_len = ALIGN(len, 4);
+		break;
 	}
+
+	if (type != PKT_TYPE_NORMAL)
+		dev_info(mdev->dev,
+			 "mt7921u rx aggr len=%d type=%u flag=0x%x agg_len=%d rxd0=0x%08x\n",
+			 len, type, flag, agg_len, rxd0);
+
+	return agg_len;
 }
 
 static int mt7921u_mac_reset(struct mt792x_dev *dev)
