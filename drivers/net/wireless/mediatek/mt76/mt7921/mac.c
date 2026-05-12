@@ -138,8 +138,18 @@ static void mt7921_mac_sta_poll(struct mt792x_dev *dev)
 
 		if (rate->flags & RATE_INFO_FLAGS_HE_MCS) {
 			u8 offs = MT_WTBL_TXRX_RATE_G2_HE + 2 * bw;
+			u8 he_gi = (val & (0x3 << offs)) >> offs;
 
-			rate->he_gi = (val & (0x3 << offs)) >> offs;
+			if (he_gi > NL80211_RATE_INFO_HE_GI_3_2) {
+				dev_info_ratelimited(dev->mt76.dev,
+						     "invalid WTBL HE GI: wcid=%d bw=%u gi=%u val=0x%08x rate_flags=0x%x mcs=%u nss=%u\n",
+						     idx, bw, he_gi, val,
+						     rate->flags, rate->mcs,
+						     rate->nss);
+				he_gi = NL80211_RATE_INFO_HE_GI_3_2;
+			}
+
+			rate->he_gi = he_gi;
 		} else if (rate->flags &
 			   (RATE_INFO_FLAGS_VHT_MCS | RATE_INFO_FLAGS_MCS)) {
 			if (val & BIT(MT_WTBL_TXRX_RATE_G2 + bw))
