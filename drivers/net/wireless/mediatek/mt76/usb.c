@@ -19,6 +19,7 @@ static int mt76u_tx_setup_buffers(struct mt76_dev *dev, struct sk_buff *skb,
 				  struct urb *urb);
 static void mt76u_tx_reclaim_aggr(struct mt76_dev *dev, struct mt76_queue *q,
 				  struct mt76_queue_entry *entry);
+static bool mt76u_check_sg(struct mt76_dev *dev);
 
 static bool mt76u_use_tx_aggr(struct mt76_dev *dev, struct mt76_queue *q)
 {
@@ -33,6 +34,14 @@ static bool mt76u_use_tx_aggr(struct mt76_dev *dev, struct mt76_queue *q)
 	}
 
 	return false;
+}
+
+static void mt76u_init_sg(struct mt76_dev *dev)
+{
+	dev->usb.sg_en = mt76u_check_sg(dev);
+
+	if (dev->usb.tx_aggr || dev->usb.rx_aggr)
+		dev->usb.sg_en = false;
 }
 
 static bool mt76u_tx_blocked(struct mt76_dev *dev)
@@ -1574,7 +1583,18 @@ EXPORT_SYMBOL_GPL(mt76u_queues_deinit);
 
 int mt76u_alloc_queues(struct mt76_dev *dev)
 {
+	struct usb_interface *uintf = to_usb_interface(dev->dev);
+	struct usb_device *udev = interface_to_usbdev(uintf);
 	int err;
+
+	mt76u_init_sg(dev);
+	dev_info(dev->dev,
+		 "USB config: tx_aggr=%d rx_aggr=%d sg_en=%d sg_tablesize=%u no_sg_constraint=%d disable_usb_sg=%d rx_aggr_len=%ps rx_aggr_align=%d rx_aggr_padding=%d rx_aggr_buf_size=%d\n",
+		 dev->usb.tx_aggr, dev->usb.rx_aggr, dev->usb.sg_en,
+		 udev->bus->sg_tablesize, udev->bus->no_sg_constraint,
+		 disable_usb_sg, dev->usb.rx_aggr_len,
+		 dev->usb.rx_aggr_align, dev->usb.rx_aggr_padding,
+		 dev->usb.rx_aggr_buf_size);
 
 	err = mt76u_alloc_rx_queue(dev, MT_RXQ_MAIN);
 	if (err < 0)
@@ -1614,8 +1634,6 @@ int __mt76u_init(struct mt76_dev *dev, struct usb_interface *intf,
 	dev->queue_ops = &usb_queue_ops;
 
 	dev_set_drvdata(&udev->dev, dev);
-
-	usb->sg_en = mt76u_check_sg(dev);
 
 	err = mt76u_set_endpoints(intf, usb);
 	if (err < 0)
