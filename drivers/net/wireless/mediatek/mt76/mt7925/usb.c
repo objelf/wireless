@@ -220,7 +220,6 @@ static int mt7925u_probe(struct usb_interface *usb_intf,
 
 	if (is_mt7927(mdev)) {
 		mdev->usb.tx_aggr = true;
-		mdev->usb.sg_en = false;
 		mdev->usb.rx_aggr = true;
 		mdev->usb.rx_aggr_align = 16;
 		mdev->usb.rx_aggr_padding = 12;

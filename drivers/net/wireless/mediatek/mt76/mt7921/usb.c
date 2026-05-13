@@ -253,7 +253,6 @@ static int mt7921u_probe(struct usb_interface *usb_intf,
 	dev_dbg(mdev->dev, "ASIC revision: %04x\n", mdev->rev);
 
 	mdev->usb.tx_aggr = true;
-	mdev->usb.sg_en = false;
 	mdev->usb.rx_aggr = true;
 	mdev->usb.rx_aggr_len = mt7921u_rx_aggr_len;
 	mdev->usb.rx_aggr_buf_size = 36 * 1024;
