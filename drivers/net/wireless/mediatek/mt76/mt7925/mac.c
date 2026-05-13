@@ -1208,6 +1208,13 @@ bool mt7925_rx_check(struct mt76_dev *mdev, void *data, int len)
 	switch (type) {
 	case PKT_TYPE_TXRX_NOTIFY:
 		/* PKT_TYPE_TXRX_NOTIFY can be received only by mmio devices */
+		if (!mt76_is_mmio(mdev)) {
+			dev_err_ratelimited(mdev->dev,
+					    "drop unexpected TXRX_NOTIFY on non-MMIO bus: len=%d rxd0=0x%08x\n",
+					    len, le32_to_cpu(rxd[0]));
+			return false;
+		}
+
 		mt7925_mac_tx_free(dev, data, len); /* mmio */
 		return false;
 	case PKT_TYPE_TXS:
@@ -1245,6 +1252,14 @@ void mt7925_queue_rx_skb(struct mt76_dev *mdev, enum mt76_rxq_id q,
 	switch (type) {
 	case PKT_TYPE_TXRX_NOTIFY:
 		/* PKT_TYPE_TXRX_NOTIFY can be received only by mmio devices */
+		if (!mt76_is_mmio(mdev)) {
+			dev_err_ratelimited(mdev->dev,
+					    "drop unexpected TXRX_NOTIFY skb on non-MMIO bus: len=%u rxd0=0x%08x\n",
+					    skb->len, le32_to_cpu(rxd[0]));
+			dev_kfree_skb(skb);
+			break;
+		}
+
 		mt7925_mac_tx_free(dev, skb->data, skb->len);
 		napi_consume_skb(skb, 1);
 		break;
