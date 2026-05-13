@@ -14,6 +14,7 @@
 #define MT792X_USB_RX_AGG_LIMIT		32
 #define MT792X_USB_RX_AGG_TIMEOUT	100
 #define MT792X_USB_RX_AGG_PKT_LIMIT	30
+#define MT792X_USB_TX_TIMEOUT_LIMIT	50000
 #define MT792X_USB_UDMA_IDLE_TIMEOUT	1000
 #define MT792X_USB_URB_IDLE_TIMEOUT	1000
 
@@ -307,10 +308,17 @@ static void mt792xu_epctl_rst_opt(struct mt792x_dev *dev, bool reset)
 static void mt792xu_log_udma_state(struct mt792x_dev *dev, const char *tag,
 				   u32 val)
 {
+	u32 wlcfg1 = mt76_rr(dev, MT_UDMA_WLCFG_1);
+	u32 tx_timeout_lmt = FIELD_GET(MT_WL_TX_TMOUT_LMT, wlcfg1);
+	u32 rx_aggr_pkt_lmt = FIELD_GET(MT_WL_RX_AGG_PKT_LMT, wlcfg1);
+
 	dev_info(dev->mt76.dev,
-		 "%s: WLCFG0=0x%08x rx_en=%d tx_en=%d rx_aggr=%d rx_flush=%d rx_busy=%d tx_busy=%d\n",
-		 tag, val, !!(val & MT_WL_RX_EN), !!(val & MT_WL_TX_EN),
+		 "%s: WLCFG0=0x%08x WLCFG1=0x%08x rx_en=%d tx_en=%d rx_aggr=%d rx_flush=%d tx_timeout_en=%d tx_timeout_lmt=%u rx_aggr_pkt_lmt=%u rx_busy=%d tx_busy=%d\n",
+		 tag, val, wlcfg1,
+		 !!(val & MT_WL_RX_EN), !!(val & MT_WL_TX_EN),
 		 !!(val & MT_WL_RX_AGG_EN), !!(val & MT_WL_RX_FLUSH),
+		 !!(val & MT_WL_TX_TMOUT_FUNC_EN),
+		 tx_timeout_lmt, rx_aggr_pkt_lmt,
 		 !!(val & MT_WL_RX_BUSY), !!(val & MT_WL_TX_BUSY));
 }
 
@@ -384,6 +392,10 @@ int mt792xu_dma_init(struct mt792x_dev *dev, bool resume)
 	mt76_set(dev, MT_UDMA_WLCFG_0,
 		 MT_WL_RX_EN | MT_WL_TX_EN |
 		 MT_WL_RX_MPSZ_PAD0 | MT_TICK_1US_EN);
+	mt76_rmw(dev, MT_UDMA_WLCFG_1, MT_WL_TX_TMOUT_LMT,
+		 FIELD_PREP(MT_WL_TX_TMOUT_LMT,
+			    MT792X_USB_TX_TIMEOUT_LIMIT));
+	mt76_set(dev, MT_UDMA_WLCFG_0, MT_WL_TX_TMOUT_FUNC_EN);
 
 	if (dev->mt76.usb.rx_aggr) {
 		mt76_set(dev, MT_UDMA_WLCFG_0, MT_WL_RX_AGG_EN);
