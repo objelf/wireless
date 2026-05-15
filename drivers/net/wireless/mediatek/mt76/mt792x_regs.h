@@ -115,7 +115,7 @@
 
 #define MT_MIB_SDR5(_band)		MT_WF_MIB(_band, 0x780)
 
-#define MT_MIB_SDR9(_band)		MT_WF_MIB(_band, 0x02c)
+#define MT_MIB_SDR9(_band)		MT_WF_MIB(_band, 0x024)
 #define MT_MIB_SDR9_BUSY_MASK		GENMASK(23, 0)
 
 #define MT_MIB_SDR12(_band)		MT_WF_MIB(_band, 0x558)
@@ -259,14 +259,13 @@
 #define MT_WF_RFCR1_DROP_CFEND		BIT(7)
 #define MT_WF_RFCR1_DROP_CFACK		BIT(8)
 
-#define MT_WF_RMAC_MIB_TIME0(_band)	MT_WF_RMAC(_band, 0x03c4)
+#define MT_WF_RMAC_MIB_AIRTIME0(_band)	MT_WF_RMAC(_band, 0x0380)
 #define MT_WF_RMAC_MIB_RXTIME_CLR	BIT(31)
 #define MT_WF_RMAC_MIB_RXTIME_EN	BIT(30)
 
 #define MT_WF_RMAC_MIB_AIRTIME14(_band)	MT_WF_RMAC(_band, 0x03b8)
 #define MT792X_WF_RMAC_MIB_AIRTIME14(_band)	MT_WF_RMAC(_band, 0x0398)
-#define MT_MIB_OBSSTIME_MASK		GENMASK(23, 0)
-#define MT_WF_RMAC_MIB_AIRTIME0(_band)	MT_WF_RMAC(_band, 0x0380)
+#define MT_MIB_OBSSTIME_MASK		GENMASK(20, 0)
 
 /* WFDMA0 */
 #define MT_WFDMA0_BASE			0xd4000

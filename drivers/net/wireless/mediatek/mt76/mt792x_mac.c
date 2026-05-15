@@ -208,7 +208,6 @@ void mt792x_mac_reset_counters(struct mt792x_phy *phy)
 	mt76_rr(dev, MT_MIB_SDR36(0));
 	mt76_rr(dev, MT_MIB_SDR37(0));
 
-	mt76_set(dev, MT_WF_RMAC_MIB_TIME0(0), MT_WF_RMAC_MIB_RXTIME_CLR);
 	mt76_set(dev, MT_WF_RMAC_MIB_AIRTIME0(0), MT_WF_RMAC_MIB_RXTIME_CLR);
 }
 EXPORT_SYMBOL_GPL(mt792x_mac_reset_counters);
@@ -260,7 +259,7 @@ void mt792x_update_channel(struct mt76_phy *mphy)
 
 	mt792x_phy_update_channel(mphy, 0);
 	/* reset obss airtime */
-	mt76_set(dev, MT_WF_RMAC_MIB_TIME0(0), MT_WF_RMAC_MIB_RXTIME_CLR);
+	mt76_set(dev, MT_WF_RMAC_MIB_AIRTIME0(0), MT_WF_RMAC_MIB_RXTIME_CLR);
 	mt76_connac_power_save_sched(mphy, &dev->pm);
 }
 EXPORT_SYMBOL_GPL(mt792x_update_channel);
@@ -293,7 +292,6 @@ void mt792x_mac_init_band(struct mt792x_dev *dev, u8 band)
 		 MT_TMAC_CTCR0_INS_DDLMT_VHT_SMPDU_EN |
 		 MT_TMAC_CTCR0_INS_DDLMT_EN);
 
-	mt76_set(dev, MT_WF_RMAC_MIB_TIME0(band), MT_WF_RMAC_MIB_RXTIME_EN);
 	mt76_set(dev, MT_WF_RMAC_MIB_AIRTIME0(band), MT_WF_RMAC_MIB_RXTIME_EN);
 
 	/* enable MIB tx-rx time reporting */
