@@ -38,6 +38,8 @@ static void mt7925_nan_set_5g_channel(struct mt792x_dev *dev,
 	if (!mt7925_regd_is_valid_channel(dev, NL80211_BAND_5GHZ, chan))
 		return;
 
+	req->config_support_5g = 1;
+	req->support_5g_val = 1;
 	req->config_5g_channel = 1;
 
 	if (chan->hw_value == NAN_5G_LOW_DISC_CHANNEL)
@@ -46,6 +48,16 @@ static void mt7925_nan_set_5g_channel(struct mt792x_dev *dev,
 		ch5g |= BIT(1);
 
 	req->channel_5g_val = cpu_to_le32(ch5g);
+}
+
+static void mt7925_nan_set_2g_support(struct mt7925_nan_enable_req_tlv *req,
+				      struct cfg80211_nan_conf *conf)
+{
+	if (!conf->band_cfgs[NL80211_BAND_2GHZ].chan)
+		return;
+
+	req->config_2dot4g_support = 1;
+	req->support_2dot4g_val = 1;
 }
 
 static void mt7925_nan_set_cluster_id(struct mt7925_nan_enable_req_tlv *req,
@@ -155,6 +167,7 @@ int mt7925_nan_enable(struct ieee80211_vif *vif,
 
 	p_nan_req_tlv->master_pref = conf->master_pref;
 
+	mt7925_nan_set_2g_support(p_nan_req_tlv, conf);
 	mt7925_nan_set_5g_channel(dev, p_nan_req_tlv, conf);
 	mt7925_nan_set_cluster_id(p_nan_req_tlv, conf->cluster_id);
 	mt7925_nan_set_dw_interval(p_nan_req_tlv, conf);
@@ -704,6 +717,23 @@ static int mt7925_nan_peer_rec_tlv(struct sk_buff *skb,
 	return 0;
 }
 
+static u8 mt7925_nan_get_supported_bands(struct mt792x_vif *mvif)
+{
+	struct wiphy *wiphy;
+	u8 bands = 0;
+
+	if (!mvif || !mvif->phy)
+		return BIT(NAN_SUPPORTED_BAND_ID_2P4G);
+
+	wiphy = mvif->phy->mt76->hw->wiphy;
+	if (wiphy->nan_supported_bands & BIT(NL80211_BAND_2GHZ))
+		bands |= BIT(NAN_SUPPORTED_BAND_ID_2P4G);
+	if (wiphy->nan_supported_bands & BIT(NL80211_BAND_5GHZ))
+		bands |= BIT(NAN_SUPPORTED_BAND_ID_5G);
+
+	return bands ?: BIT(NAN_SUPPORTED_BAND_ID_2P4G);
+}
+
 static int mt7925_nan_peer_cap_tlv(struct sk_buff *skb,
 				   struct ieee80211_sta *sta,
 				   struct mt792x_sta *msta)
@@ -730,7 +760,8 @@ static int mt7925_nan_peer_cap_tlv(struct sk_buff *skb,
 
 	peer_cap_tlv = (struct mt7925_nan_sched_update_peer_cap_tlv *)tlv;
 	peer_cap_tlv->sch_idx = msta->nan_sched.sch_idx;
-	peer_cap_tlv->supported_bands = BIT(NAN_SUPPORTED_BAND_ID_2P4G);
+	peer_cap_tlv->supported_bands =
+		mt7925_nan_get_supported_bands(msta->vif);
 	peer_cap_tlv->max_chnl_switch_time = sched->max_chan_switch;
 
 	for (i = 0; i < sched->n_channels; i++) {
