@@ -641,6 +641,7 @@ mt7925_mcu_uni_rx_unsolicited_event(struct mt792x_dev *dev,
 		return;
 	case MCU_UNI_EVENT_NAN:
 		mt7925_nan_mcu_event(dev, skb);
+		break;
 	default:
 		break;
 	}
