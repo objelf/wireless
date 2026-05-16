@@ -12,6 +12,12 @@
 #define MT_STA_BFER			BIT(0)
 #define MT_STA_BFEE			BIT(1)
 
+static bool mt7925_vif_is_nan(struct ieee80211_vif *vif)
+{
+	return vif->type == NL80211_IFTYPE_NAN ||
+	       vif->type == NL80211_IFTYPE_NAN_DATA;
+}
+
 int mt7925_mcu_parse_response(struct mt76_dev *mdev, int cmd,
 			      struct sk_buff *skb, int seq)
 {
@@ -1841,8 +1847,7 @@ mt7925_mcu_sta_phy_tlv(struct sk_buff *skb,
 	tlv = mt76_connac_mcu_add_tlv(skb, STA_REC_PHY, sizeof(*phy));
 	phy = (struct sta_rec_phy *)tlv;
 
-	if (vif->type == NL80211_IFTYPE_NAN ||
-	    vif->type == NL80211_IFTYPE_NAN_DATA) {
+	if (mt7925_vif_is_nan(vif)) {
 		phy->phy_type = PHY_TYPE_BIT_OFDM | PHY_TYPE_BIT_ERP;
 		phy->phy_type |= mt76_connac_get_phy_mode_v2(mvif->phy->mt76, vif,
 							     NL80211_BAND_5GHZ,
@@ -1929,8 +1934,7 @@ mt7925_mcu_sta_rate_ctrl_tlv(struct sk_buff *skb,
 	tlv = mt76_connac_mcu_add_tlv(skb, STA_REC_RA, sizeof(*ra_info));
 	ra_info = (struct sta_rec_ra_info *)tlv;
 
-	if (vif->type == NL80211_IFTYPE_NAN ||
-	    vif->type == NL80211_IFTYPE_NAN_DATA)
+	if (mt7925_vif_is_nan(vif))
 		band = NL80211_BAND_5GHZ;
 	else
 		band = chandef->chan->band;
@@ -2582,6 +2586,29 @@ mt7925_get_phy_mode_ext(struct mt76_phy *phy, struct ieee80211_vif *vif,
 }
 
 static void
+mt7925_mcu_bss_basic_tlv_nan(struct mt76_phy *phy,
+			     struct ieee80211_vif *vif,
+			     struct ieee80211_link_sta *link_sta,
+			     struct mt76_connac_bss_basic_tlv *basic_req)
+{
+	u8 mode_2g, mode_5g;
+
+	mode_2g = mt7925_get_phy_mode_ext(phy, vif, NL80211_BAND_2GHZ,
+					  link_sta);
+	mode_5g = mt7925_get_phy_mode_ext(phy, vif, NL80211_BAND_5GHZ,
+					  link_sta);
+	basic_req->phymode_ext = mode_2g | mode_5g;
+
+	basic_req->nonht_basic_phy = cpu_to_le16(PHY_TYPE_ERP_INDEX);
+
+	mode_2g = mt76_connac_get_phy_mode(phy, vif, NL80211_BAND_2GHZ,
+					   link_sta);
+	mode_5g = mt76_connac_get_phy_mode(phy, vif, NL80211_BAND_5GHZ,
+					   link_sta);
+	basic_req->phymode = (mode_2g | mode_5g) & ~PHY_MODE_B;
+}
+
+static void
 mt7925_mcu_bss_basic_tlv(struct sk_buff *skb,
 			 struct ieee80211_bss_conf *link_conf,
 			 struct ieee80211_link_sta *link_sta,
@@ -2600,7 +2627,6 @@ mt7925_mcu_bss_basic_tlv(struct sk_buff *skb,
 	struct tlv *tlv;
 	int conn_type;
 	u8 idx;
-	u8 mode_2g = 0, mode_5g = 0;
 
 	tlv = mt76_connac_mcu_add_tlv(skb, UNI_BSS_INFO_BASIC, sizeof(*basic_req));
 	basic_req = (struct mt76_connac_bss_basic_tlv *)tlv;
@@ -2609,27 +2635,8 @@ mt7925_mcu_bss_basic_tlv(struct sk_buff *skb,
 						      mconf->mt76.omac_idx;
 	basic_req->hw_bss_idx = idx;
 
-	if (vif->type == NL80211_IFTYPE_NAN ||
-	    vif->type == NL80211_IFTYPE_NAN_DATA) {
-		mode_2g = mt7925_get_phy_mode_ext(phy, vif,
-						  NL80211_BAND_2GHZ,
-						  link_sta);
-		mode_5g = mt7925_get_phy_mode_ext(phy, vif,
-						  NL80211_BAND_5GHZ,
-						  link_sta);
-
-		basic_req->phymode_ext = mode_2g | mode_5g;
-
-		basic_req->nonht_basic_phy = cpu_to_le16(PHY_TYPE_ERP_INDEX);
-
-		mode_2g = mt76_connac_get_phy_mode(phy, vif,
-						   NL80211_BAND_2GHZ,
-						   link_sta);
-		mode_5g = mt76_connac_get_phy_mode(phy, vif,
-						   NL80211_BAND_5GHZ,
-						   link_sta);
-
-		basic_req->phymode = (mode_2g | mode_5g) & ~PHY_MODE_B;
+	if (mt7925_vif_is_nan(vif)) {
+		mt7925_mcu_bss_basic_tlv_nan(phy, vif, link_sta, basic_req);
 	} else {
 		band = chandef->chan->band;
 		basic_req->phymode_ext = mt7925_get_phy_mode_ext(phy, vif, band,
@@ -2757,8 +2764,7 @@ mt7925_mcu_bss_bmc_tlv(struct sk_buff *skb, struct mt792x_phy *phy,
 
 	bmc = (struct bss_rate_tlv *)tlv;
 
-	if (vif->type == NL80211_IFTYPE_NAN ||
-	    vif->type == NL80211_IFTYPE_NAN_DATA)
+	if (mt7925_vif_is_nan(vif))
 		band = NL80211_BAND_5GHZ;
 	else
 		band = chandef->chan->band;
