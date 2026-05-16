@@ -458,6 +458,9 @@ mt7925_add_interface(struct ieee80211_hw *hw, struct ieee80211_vif *vif)
 
 	mt792x_mutex_acquire(dev);
 
+	dev_info(dev->mt76.dev, "NANDBG: add_interface type=%d addr=%pM\n",
+		 vif->type, vif->addr);
+
 	mvif->phy = phy;
 	mvif->bss_conf.vif = mvif;
 	mvif->sta.vif = mvif;
@@ -1257,6 +1260,8 @@ int mt7925_mac_sta_event(struct mt76_dev *mdev, struct ieee80211_vif *vif,
 		mt7925_mac_link_sta_assoc(mdev, vif, link_sta);
 		break;
 	case MT76_STA_EVENT_AUTHORIZE:
+		dev_info(mdev->dev, "NANDBG: sta_event AUTHORIZE vif_type=%d vif=%pM sta=%pM\n",
+			 vif->type, vif->addr, sta->addr);
 		if (vif->type == NL80211_IFTYPE_NAN_DATA)
 			return mt792x_nan_map_sta_rec(mdev, vif, sta);
 		break;
@@ -2600,8 +2605,13 @@ static int mt7925_start_nan(struct ieee80211_hw *hw,
 
 	mt792x_mutex_acquire(dev);
 
+	dev_info(dev->mt76.dev, "NANDBG: start_nan enter vif=%pM master_pref=%u 2g_chan=%p\n",
+		 vif->addr, conf->master_pref,
+		 conf->band_cfgs[NL80211_BAND_2GHZ].chan);
+
 	chan = conf->band_cfgs[NL80211_BAND_2GHZ].chan;
 	if (!chan) {
+		dev_info(dev->mt76.dev, "NANDBG: start_nan no 2g channel, reject\n");
 		err = -EINVAL;
 		goto out;
 	}
@@ -2616,6 +2626,8 @@ static int mt7925_start_nan(struct ieee80211_hw *hw,
 
 	dev->nan_vif = vif;
 	err = mt7925_nan_enable(vif, dev, conf);
+	dev_info(dev->mt76.dev, "NANDBG: mt7925_nan_enable ret=%d nan_vif=%p vif=%pM\n",
+		 err, dev->nan_vif, vif->addr);
 	if (err) {
 		dev->nan_vif = NULL;
 		mt7925_mcu_add_bss_info(&dev->phy, NULL, link_conf,
@@ -2623,6 +2635,8 @@ static int mt7925_start_nan(struct ieee80211_hw *hw,
 	}
 
 out:
+	dev_info(dev->mt76.dev, "NANDBG: start_nan exit ret=%d vif=%pM\n",
+		 err, vif->addr);
 	mt792x_mutex_release(dev);
 
 	return err;
@@ -2677,7 +2691,11 @@ static int mt7925_nan_peer_sched_changed(struct ieee80211_hw *hw,
 
 	mt792x_mutex_acquire(dev);
 
+	dev_info(dev->mt76.dev, "NANDBG: nan_peer_sched_changed enter sta=%pM\n",
+		 sta->addr);
 	err = mt792x_nan_set_peer_schedule(dev, sta);
+	dev_info(dev->mt76.dev, "NANDBG: nan_peer_sched_changed ret=%d sta=%pM\n",
+		 err, sta->addr);
 
 	mt792x_mutex_release(dev);
 
