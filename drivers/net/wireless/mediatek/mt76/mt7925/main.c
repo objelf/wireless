@@ -1258,7 +1258,7 @@ int mt7925_mac_sta_event(struct mt76_dev *mdev, struct ieee80211_vif *vif,
 		break;
 	case MT76_STA_EVENT_AUTHORIZE:
 		if (vif->type == NL80211_IFTYPE_NAN_DATA)
-			mt792x_nan_map_sta_rec(mdev, vif, sta);
+			return mt792x_nan_map_sta_rec(mdev, vif, sta);
 		break;
 	default:
 		break;
