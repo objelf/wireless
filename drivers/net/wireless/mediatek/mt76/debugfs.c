@@ -88,6 +88,26 @@ static int mt76_rx_queues_read(struct seq_file *s, void *data)
 	return 0;
 }
 
+static int mt76_usb_stats_read(struct seq_file *s, void *data)
+{
+	struct mt76_dev *dev = dev_get_drvdata(s->private);
+	struct mt76_usb *usb = &dev->usb;
+
+	seq_printf(s, "tx_aggr\t%d\n", usb->tx_aggr);
+	seq_printf(s, "rx_aggr\t%d\n", usb->rx_aggr);
+	seq_printf(s, "sg_en\t%d\n", usb->sg_en);
+	seq_printf(s, "tx_urbs\t%lld\n", atomic64_read(&usb->stats.tx_urbs));
+	seq_printf(s, "tx_packets\t%lld\n",
+		   atomic64_read(&usb->stats.tx_packets));
+	seq_printf(s, "tx_bytes\t%lld\n", atomic64_read(&usb->stats.tx_bytes));
+	seq_printf(s, "rx_urbs\t%lld\n", atomic64_read(&usb->stats.rx_urbs));
+	seq_printf(s, "rx_packets\t%lld\n",
+		   atomic64_read(&usb->stats.rx_packets));
+	seq_printf(s, "rx_bytes\t%lld\n", atomic64_read(&usb->stats.rx_bytes));
+
+	return 0;
+}
+
 void mt76_seq_puts_array(struct seq_file *file, const char *str,
 			 s8 *val, int len)
 {
@@ -120,6 +140,9 @@ mt76_register_debugfs_fops(struct mt76_phy *phy,
 		debugfs_create_blob("otp", 0400, dir, &dev->otp);
 	debugfs_create_devm_seqfile(dev->dev, "rx-queues", dir,
 				    mt76_rx_queues_read);
+	if (mt76_is_usb(dev))
+		debugfs_create_devm_seqfile(dev->dev, "usb-stats", dir,
+					    mt76_usb_stats_read);
 
 	return dir;
 }

@@ -51,6 +51,26 @@ static bool mt76u_tx_blocked(struct mt76_dev *dev)
 	       test_bit(MT76_REMOVED, &dev->phy.state);
 }
 
+static void mt76u_tx_stats_add(struct mt76_dev *dev, struct urb *urb,
+			       unsigned int packets)
+{
+	atomic64_inc(&dev->usb.stats.tx_urbs);
+	atomic64_add(packets, &dev->usb.stats.tx_packets);
+	atomic64_add(urb->transfer_buffer_length, &dev->usb.stats.tx_bytes);
+}
+
+static void mt76u_rx_urb_stats_add(struct mt76_dev *dev, struct urb *urb)
+{
+	atomic64_inc(&dev->usb.stats.rx_urbs);
+	atomic64_add(urb->actual_length, &dev->usb.stats.rx_bytes);
+}
+
+static void mt76u_rx_packet_stats_add(struct mt76_dev *dev,
+				      unsigned int packets)
+{
+	atomic64_add(packets, &dev->usb.stats.rx_packets);
+}
+
 static void mt76u_urb_complete(struct mt76_dev *dev, bool tx)
 {
 	atomic_t *pending = tx ? &dev->usb.tx_urb_pending :
@@ -759,6 +779,9 @@ next:
 	mt76_put_page_pool_buf(urb->transfer_buffer, false);
 	urb->transfer_buffer = NULL;
 
+	if (nframes)
+		mt76u_rx_packet_stats_add(dev, nframes);
+
 	return max(nframes, 1);
 }
 
@@ -806,6 +829,7 @@ mt76u_process_rx_entry(struct mt76_dev *dev, struct urb *urb,
 
 	skb_mark_for_recycle(skb);
 	dev->drv->rx_skb(dev, MT_RXQ_MAIN, skb, NULL);
+	mt76u_rx_packet_stats_add(dev, 1);
 
 	return nsgs;
 }
@@ -838,6 +862,9 @@ static void mt76u_complete_rx(struct urb *urb)
 	case 0:
 		break;
 	}
+
+	if (!urb->status)
+		mt76u_rx_urb_stats_add(dev, urb);
 
 	spin_lock_irqsave(&q->lock, flags);
 	idx = e - q->entry;
@@ -1395,6 +1422,7 @@ static void mt76u_tx_kick_legacy(struct mt76_dev *dev, struct mt76_queue *q)
 					err);
 			break;
 		}
+		mt76u_tx_stats_add(dev, urb, 1);
 		q->first = (q->first + 1) % q->ndesc;
 	}
 }
@@ -1442,6 +1470,7 @@ static void mt76u_tx_kick_aggr(struct mt76_dev *dev, struct mt76_queue *q)
 			break;
 		}
 
+		mt76u_tx_stats_add(dev, urb, e->aggr_len);
 		q->first = (q->first + e->aggr_len) % q->ndesc;
 	}
 }
