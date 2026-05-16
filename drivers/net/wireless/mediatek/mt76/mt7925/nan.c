@@ -538,15 +538,14 @@ static int mt7925_nan_avail_ctrl_tlv(struct sk_buff *skb,
 static u32 mt7925_nan_slot_to_bitmap(struct ieee80211_vif *vif,
 				     struct mt7925_nan_ch_timeline *ch_list)
 {
-	struct mt792x_vif *mvif = (struct mt792x_vif *)vif->drv_priv;
 	struct ieee80211_nan_channel **slots = vif->cfg.nan_sched.schedule;
+	struct mt792x_vif *mvif = (struct mt792x_vif *)vif->drv_priv;
 	u32 num_channels = 0;
 	u32 i, j;
 
-
 	for (i = 0; i < ARRAY_SIZE(mvif->nan.local_sched); i++) {
-		struct ieee80211_nan_channel *slot = slots[i];
 		struct cfg80211_chan_def *slot_chan = &mvif->nan.local_sched[i];
+		struct ieee80211_nan_channel *slot = slots[i];
 		bool is_found = false;
 
 		if (slot && !IS_ERR(slot) && slot->chanctx_conf) {
@@ -703,8 +702,8 @@ static int mt7925_nan_peer_cap_tlv(struct sk_buff *skb,
 	struct mt7925_nan_sched_update_peer_cap_tlv *peer_cap_tlv;
 	struct ieee80211_nan_peer_sched *sched;
 	enum nl80211_band band;
-	u16 primary_ch;
 	struct tlv *tlv;
+	u16 primary_ch;
 	u32 i;
 
 	if (!skb || !sta || !msta)
@@ -761,9 +760,9 @@ mt7925_nan_fill_crb_committed(struct mt7925_nan_sched_update_crb_tlv *crb_tlv,
 
 	for (m = 0; m < CFG80211_NAN_MAX_PEER_MAPS &&
 	     m < NAN_TIMELINE_MGMT_SIZE; m++) {
-		struct ieee80211_nan_peer_map *map = &sched->maps[m];
 		struct mt7925_nan_sched_timeline *tl =
 			&crb_tlv->comm_faw_timeline[m];
+		struct ieee80211_nan_peer_map *map = &sched->maps[m];
 
 		if (map->map_id == CFG80211_NAN_INVALID_MAP_ID)
 			continue;
@@ -818,11 +817,11 @@ int mt792x_nan_set_peer_schedule(struct mt792x_dev *dev,
 				 struct ieee80211_sta *sta)
 {
 	struct mt7925_nan_common_hdr *hdr;
+	bool idx_allocated = false;
 	struct mt792x_sta *msta;
 	struct mt792x_nan *nan;
 	struct mt76_dev *mdev;
 	struct sk_buff *skb;
-	bool idx_allocated = false;
 	int ret;
 
 	if (!dev || !sta)
@@ -937,21 +936,19 @@ int mt792x_nan_map_sta_rec(struct mt76_dev *mdev,
 {
 	struct mt7925_nan_sched_map_sta_rec_tlv *map_tlv;
 	struct mt7925_nan_common_hdr *hdr;
-	u8 nmi_addr[ETH_ALEN];
-	struct mt792x_sta *nmi_msta;
 	struct ieee80211_sta *nmi_sta;
+	struct mt792x_sta *nmi_msta;
 	struct mt792x_sta *msta;
-	struct mt792x_vif *mvif;
 	struct sk_buff *skb;
-	struct tlv *tlv;
+	u8 nmi_addr[ETH_ALEN];
 	int ndp_ctx_id = 0;
 	int ret = -ENOMEM;
+	struct tlv *tlv;
 
 	if (!mdev || !vif || !sta)
 		return -EINVAL;
 
 	msta = (struct mt792x_sta *)sta->drv_priv;
-	mvif = (struct mt792x_vif *)vif->drv_priv;
 	dev_info(mdev->dev, "NANDBG: map_sta_rec enter ndi_vif=%pM ndi_sta=%pM wcid=%u\n",
 		 vif->addr, sta->addr, msta->deflink.wcid.idx);
 
