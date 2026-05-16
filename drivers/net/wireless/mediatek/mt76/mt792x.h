@@ -123,6 +123,7 @@ struct mt792x_sta_nan_sched {
 	u32 sch_idx;
 	bool idx_assigned;
 	unsigned long ndp_ctx_bitmap;
+	bool ndp_ctx_assigned;
 	u8 ndp_ctx_id;		/* assigned NDP context ID (for NDI sta) */
 	struct {
 		u8 map_id;
