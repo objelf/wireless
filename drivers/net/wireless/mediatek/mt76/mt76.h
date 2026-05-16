@@ -689,6 +689,15 @@ struct mt76_usb {
 	int rx_aggr_padding;
 	int rx_aggr_buf_size;
 
+	struct {
+		atomic64_t tx_urbs;
+		atomic64_t tx_packets;
+		atomic64_t tx_bytes;
+		atomic64_t rx_urbs;
+		atomic64_t rx_packets;
+		atomic64_t rx_bytes;
+	} stats;
+
 	struct mt76u_mcu {
 		u8 *data;
 		/* multiple reads */
