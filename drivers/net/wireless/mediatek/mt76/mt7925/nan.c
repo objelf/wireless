@@ -161,9 +161,17 @@ int mt7925_nan_enable(struct ieee80211_vif *vif,
 		},
 	};
 	struct mt7925_nan_enable_req_tlv *p_nan_req_tlv = &nan_cmd.nan_req_tlv;
+	int ret;
 
 	if (!vif || !dev || !conf)
 		return -EINVAL;
+
+	dev_info(mdev->dev, "NANDBG: nan_enable enter vif=%pM master_pref=%u 2g_freq=%d 5g_freq=%d\n",
+		 vif->addr, conf->master_pref,
+		 conf->band_cfgs[NL80211_BAND_2GHZ].chan ?
+		 conf->band_cfgs[NL80211_BAND_2GHZ].chan->center_freq : 0,
+		 conf->band_cfgs[NL80211_BAND_5GHZ].chan ?
+		 conf->band_cfgs[NL80211_BAND_5GHZ].chan->center_freq : 0);
 
 	p_nan_req_tlv->master_pref = conf->master_pref;
 
@@ -177,7 +185,11 @@ int mt7925_nan_enable(struct ieee80211_vif *vif,
 
 	mt7925_nan_update_conf(mvif, conf);
 
-	return mt76_mcu_send_msg(mdev, MCU_UNI_CMD(NAN), &nan_cmd, sizeof(nan_cmd), true);
+	ret = mt76_mcu_send_msg(mdev, MCU_UNI_CMD(NAN), &nan_cmd, sizeof(nan_cmd), true);
+	dev_info(mdev->dev, "NANDBG: nan_enable MCU_UNI_CMD(NAN) ret=%d vif=%pM\n",
+		 ret, vif->addr);
+
+	return ret;
 }
 
 int mt7925_nan_disable(struct ieee80211_vif *vif, struct mt792x_dev *dev)
@@ -882,6 +894,9 @@ int mt792x_nan_set_peer_schedule(struct mt792x_dev *dev,
 
 	msta = (struct mt792x_sta *)sta->drv_priv;
 	nan = &msta->vif->nan;
+	dev_info(mdev->dev, "NANDBG: set_peer_schedule enter sta=%pM idx_assigned=%d sch_idx=%u\n",
+		 sta->addr, msta->nan_sched.idx_assigned,
+		 msta->nan_sched.sch_idx);
 
 	/* Allocate connection index on first call for this peer */
 	if (!msta->nan_sched.idx_assigned) {
@@ -896,6 +911,8 @@ int mt792x_nan_set_peer_schedule(struct mt792x_dev *dev,
 		msta->nan_sched.sch_idx = idx;
 		msta->nan_sched.idx_assigned = true;
 		idx_allocated = true;
+		dev_info(mdev->dev, "NANDBG: set_peer_schedule alloc sch_idx=%d sta=%pM\n",
+			 idx, sta->addr);
 
 		if (mt7925_nan_peer_rec_tlv(skb, sta, msta, true) ||
 		    mt7925_nan_peer_cap_tlv(skb, sta, msta)) {
@@ -910,6 +927,8 @@ int mt792x_nan_set_peer_schedule(struct mt792x_dev *dev,
 	}
 
 	ret = mt76_mcu_skb_send_msg(mdev, skb, MCU_UNI_CMD(NAN), true);
+	dev_info(mdev->dev, "NANDBG: set_peer_schedule MCU ret=%d sta=%pM sch_idx=%u idx_allocated=%d\n",
+		 ret, sta->addr, msta->nan_sched.sch_idx, idx_allocated);
 	if (ret && idx_allocated)
 		goto clear_idx;
 
@@ -988,6 +1007,8 @@ int mt792x_nan_map_sta_rec(struct mt76_dev *mdev,
 
 	msta = (struct mt792x_sta *)sta->drv_priv;
 	mvif = (struct mt792x_vif *)vif->drv_priv;
+	dev_info(mdev->dev, "NANDBG: map_sta_rec enter ndi_vif=%pM ndi_sta=%pM wcid=%u\n",
+		 vif->addr, sta->addr, msta->deflink.wcid.idx);
 
 	rcu_read_lock();
 	nmi_sta = rcu_dereference(sta->nmi);
@@ -1000,6 +1021,9 @@ int mt792x_nan_map_sta_rec(struct mt76_dev *mdev,
 
 	memcpy(nmi_addr, nmi_sta->addr, ETH_ALEN);
 	nmi_msta = (struct mt792x_sta *)nmi_sta->drv_priv;
+	dev_info(mdev->dev, "NANDBG: map_sta_rec found nmi_sta=%pM nmi_sch_idx=%u nmi_idx_assigned=%d\n",
+		 nmi_addr, nmi_msta->nan_sched.sch_idx,
+		 nmi_msta->nan_sched.idx_assigned);
 
 	ndp_ctx_id = find_first_zero_bit(&nmi_msta->nan_sched.ndp_ctx_bitmap,
 					 NAN_MAX_NDP_CXT);
@@ -1009,6 +1033,8 @@ int mt792x_nan_map_sta_rec(struct mt76_dev *mdev,
 	}
 
 	set_bit(ndp_ctx_id, &nmi_msta->nan_sched.ndp_ctx_bitmap);
+	dev_info(mdev->dev, "NANDBG: map_sta_rec alloc ndp_ctx_id=%d ndi_sta=%pM nmi_sta=%pM\n",
+		 ndp_ctx_id, sta->addr, nmi_addr);
 	rcu_read_unlock();
 
 	msta->nan_sched.ndp_ctx_id = ndp_ctx_id;
@@ -1040,6 +1066,8 @@ int mt792x_nan_map_sta_rec(struct mt76_dev *mdev,
 
 	ret = mt76_mcu_skb_send_msg(mdev, skb,
 				    MCU_UNI_CMD(NAN), true);
+	dev_info(mdev->dev, "NANDBG: map_sta_rec MCU ret=%d ndi=%pM nmi=%pM wcid=%u ndp_ctx_id=%d\n",
+		 ret, vif->addr, nmi_addr, msta->deflink.wcid.idx, ndp_ctx_id);
 	if (ret)
 		goto clear_ndp_ctx;
 
