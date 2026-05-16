@@ -2634,14 +2634,21 @@ static int mt7925_start_nan(struct ieee80211_hw *hw,
 		goto out;
 
 	dev->nan_vif = vif;
+	err = mt7925_nan_set_nmi_addr(dev, vif->addr);
+	if (err)
+		goto rollback_bss;
+
 	err = mt7925_nan_enable(vif, dev, conf);
 	dev_info(dev->mt76.dev, "NANDBG: mt7925_nan_enable ret=%d nan_vif=%p vif=%pM\n",
 		 err, dev->nan_vif, vif->addr);
-	if (err) {
-		dev->nan_vif = NULL;
-		mt7925_mcu_add_bss_info(&dev->phy, NULL, link_conf,
-					NULL, false);
-	}
+	if (err)
+		goto rollback_bss;
+
+	goto out;
+
+rollback_bss:
+	dev->nan_vif = NULL;
+	mt7925_mcu_add_bss_info(&dev->phy, NULL, link_conf, NULL, false);
 
 out:
 	dev_info(dev->mt76.dev, "NANDBG: start_nan exit ret=%d vif=%pM\n",
