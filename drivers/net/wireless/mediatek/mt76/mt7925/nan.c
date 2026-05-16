@@ -829,6 +829,8 @@ int mt792x_nan_set_peer_schedule(struct mt792x_dev *dev,
 	struct mt792x_nan *nan;
 	struct mt76_dev *mdev;
 	struct sk_buff *skb;
+	bool idx_allocated = false;
+	int ret;
 
 	if (!dev || !sta)
 		return -EINVAL;
@@ -857,21 +859,36 @@ int mt792x_nan_set_peer_schedule(struct mt792x_dev *dev,
 		set_bit(idx, &nan->conn_bitmap);
 		msta->nan_sched.sch_idx = idx;
 		msta->nan_sched.idx_assigned = true;
+		idx_allocated = true;
 
 		if (mt7925_nan_peer_rec_tlv(skb, sta, msta, true) ||
 		    mt7925_nan_peer_cap_tlv(skb, sta, msta)) {
-			dev_kfree_skb(skb);
-			return -ENOMEM;
+			ret = -ENOMEM;
+			goto free_skb;
 		}
 	}
 
 	if (mt7925_nan_update_crb_tlv(skb, sta, msta)) {
-		dev_kfree_skb(skb);
-		return -ENOMEM;
+		ret = -ENOMEM;
+		goto free_skb;
 	}
 
-	return mt76_mcu_skb_send_msg(mdev, skb,
-				     MCU_UNI_CMD(NAN), true);
+	ret = mt76_mcu_skb_send_msg(mdev, skb, MCU_UNI_CMD(NAN), true);
+	if (ret && idx_allocated)
+		goto clear_idx;
+
+	return ret;
+
+free_skb:
+	dev_kfree_skb(skb);
+	if (!idx_allocated)
+		return ret;
+
+clear_idx:
+	clear_bit(msta->nan_sched.sch_idx, &nan->conn_bitmap);
+	msta->nan_sched.idx_assigned = false;
+
+	return ret;
 }
 
 int mt792x_nan_set_peer_rec(struct mt76_dev *mdev,
