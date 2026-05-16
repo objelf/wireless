@@ -2160,10 +2160,10 @@ static void mt7925_vif_cfg_changed(struct ieee80211_hw *hw,
 		}
 	}
 
+	mt792x_mutex_release(dev);
+
 	if (changed & BSS_CHANGED_NAN_LOCAL_SCHED)
 		mt7925_nan_local_sched_changed(dev, vif);
-
-	mt792x_mutex_release(dev);
 }
 
 static void mt7925_link_info_changed(struct ieee80211_hw *hw,
