@@ -424,7 +424,7 @@ mt7925_nan_mcu_handle_de_event(struct mt792x_dev *dev, struct tlv *tlv)
 	if (de_evt->event_type != NAN_EVENT_ID_JOINED_CLUSTER)
 		return;
 
-	if (!ieee80211_vif_nan_started(dev->nan_vif)) {
+	if (!dev->nan_vif || !ieee80211_vif_nan_started(dev->nan_vif)) {
 		dev_warn(dev->mt76.dev, "nan: joined-cluster event but NAN not started\n");
 		return;
 	}
