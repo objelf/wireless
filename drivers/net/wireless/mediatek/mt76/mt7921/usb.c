@@ -12,6 +12,14 @@
 #include "mcu.h"
 #include "../mt76_connac2_mac.h"
 
+static bool tx_aggr = true;
+module_param_named(tx_aggr, tx_aggr, bool, 0644);
+MODULE_PARM_DESC(tx_aggr, "Enable USB TX aggregation");
+
+static bool rx_aggr = true;
+module_param_named(rx_aggr, rx_aggr, bool, 0644);
+MODULE_PARM_DESC(rx_aggr, "Enable USB RX aggregation");
+
 static const struct usb_device_id mt7921u_device_table[] = {
 	{ USB_DEVICE_AND_INTERFACE_INFO(0x0e8d, 0x7902, 0xff, 0xff, 0xff),
 		.driver_info = (kernel_ulong_t)MT7902_FIRMWARE_WM },
@@ -268,8 +276,8 @@ static int mt7921u_probe(struct usb_interface *usb_intf,
 		    (mt76_rr(dev, MT_HW_REV) & 0xff);
 	dev_dbg(mdev->dev, "ASIC revision: %04x\n", mdev->rev);
 
-	mdev->usb.tx_aggr = true;
-	mdev->usb.rx_aggr = true;
+	mdev->usb.tx_aggr = tx_aggr;
+	mdev->usb.rx_aggr = rx_aggr;
 	mdev->usb.rx_aggr_len = mt7921u_rx_aggr_len;
 	mdev->usb.rx_aggr_buf_size = 36 * 1024;
 
