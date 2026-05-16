@@ -928,6 +928,7 @@ int mt792x_nan_map_sta_rec(struct mt76_dev *mdev,
 	struct sk_buff *skb;
 	struct tlv *tlv;
 	int ndp_ctx_id = 0;
+	int ret = -ENOMEM;
 
 	if (!mdev || !vif || !sta)
 		return -EINVAL;
@@ -949,19 +950,22 @@ int mt792x_nan_map_sta_rec(struct mt76_dev *mdev,
 
 	ndp_ctx_id = find_first_zero_bit(&nmi_msta->nan_sched.ndp_ctx_bitmap,
 					 NAN_MAX_NDP_CXT);
-	if (ndp_ctx_id < NAN_MAX_NDP_CXT)
-		set_bit(ndp_ctx_id, &nmi_msta->nan_sched.ndp_ctx_bitmap);
-	else
-		ndp_ctx_id = 0;
+	if (ndp_ctx_id >= NAN_MAX_NDP_CXT) {
+		rcu_read_unlock();
+		return -ENOSPC;
+	}
+
+	set_bit(ndp_ctx_id, &nmi_msta->nan_sched.ndp_ctx_bitmap);
 	rcu_read_unlock();
 
 	msta->nan_sched.ndp_ctx_id = ndp_ctx_id;
+	msta->nan_sched.ndp_ctx_assigned = true;
 
 	skb = mt76_mcu_msg_alloc(mdev, NULL,
 				 sizeof(struct mt7925_nan_common_hdr) +
 				 sizeof(struct mt7925_nan_sched_map_sta_rec_tlv));
 	if (!skb)
-		return -ENOMEM;
+		goto clear_ndp_ctx;
 
 	hdr = (struct mt7925_nan_common_hdr *)skb_put(skb, sizeof(*hdr));
 	memset(hdr, 0, sizeof(*hdr));
@@ -970,7 +974,8 @@ int mt792x_nan_map_sta_rec(struct mt76_dev *mdev,
 				      sizeof(struct mt7925_nan_sched_map_sta_rec_tlv));
 	if (!tlv) {
 		dev_kfree_skb(skb);
-		return -ENOMEM;
+		ret = -ENOMEM;
+		goto clear_ndp_ctx;
 	}
 
 	map_tlv = (struct mt7925_nan_sched_map_sta_rec_tlv *)tlv;
@@ -980,6 +985,23 @@ int mt792x_nan_map_sta_rec(struct mt76_dev *mdev,
 	map_tlv->role_idx = 0;
 	memcpy(map_tlv->ndi_addr, vif->addr, ETH_ALEN);
 
-	return mt76_mcu_skb_send_msg(mdev, skb,
-				     MCU_UNI_CMD(NAN), true);
+	ret = mt76_mcu_skb_send_msg(mdev, skb,
+				    MCU_UNI_CMD(NAN), true);
+	if (ret)
+		goto clear_ndp_ctx;
+
+	return 0;
+
+clear_ndp_ctx:
+	rcu_read_lock();
+	nmi_sta = rcu_dereference(sta->nmi);
+	if (nmi_sta) {
+		nmi_msta = (struct mt792x_sta *)nmi_sta->drv_priv;
+		clear_bit(msta->nan_sched.ndp_ctx_id,
+			  &nmi_msta->nan_sched.ndp_ctx_bitmap);
+	}
+	rcu_read_unlock();
+	msta->nan_sched.ndp_ctx_assigned = false;
+
+	return ret ?: -ENOMEM;
 }

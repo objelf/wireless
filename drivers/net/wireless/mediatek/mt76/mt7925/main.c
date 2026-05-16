@@ -1411,8 +1411,11 @@ void mt7925_mac_sta_remove(struct mt76_dev *mdev, struct ieee80211_vif *vif,
 			struct mt792x_sta *nmi_msta =
 				(struct mt792x_sta *)nmi_sta->drv_priv;
 
-			clear_bit(msta->nan_sched.ndp_ctx_id,
-				  &nmi_msta->nan_sched.ndp_ctx_bitmap);
+			if (msta->nan_sched.ndp_ctx_assigned) {
+				clear_bit(msta->nan_sched.ndp_ctx_id,
+					  &nmi_msta->nan_sched.ndp_ctx_bitmap);
+				msta->nan_sched.ndp_ctx_assigned = false;
+			}
 		}
 		rcu_read_unlock();
 	}
