@@ -485,6 +485,24 @@ out:
 	return ret;
 }
 
+static void
+mt7925_remove_interface(struct ieee80211_hw *hw, struct ieee80211_vif *vif)
+{
+	struct mt792x_vif *mvif = (struct mt792x_vif *)vif->drv_priv;
+	struct mt792x_dev *dev = mt792x_hw_dev(hw);
+	struct mt792x_bss_conf *mconf;
+
+	mt792x_mutex_acquire(dev);
+
+	if (dev->nan_vif == vif)
+		dev->nan_vif = NULL;
+
+	mconf = mt792x_link_conf_to_mconf(&vif->bss_conf);
+	mt792x_mac_link_bss_remove(dev, mconf, &mvif->sta.deflink);
+
+	mt792x_mutex_release(dev);
+}
+
 static void mt7925_roc_iter(void *priv, u8 *mac,
 			    struct ieee80211_vif *vif)
 {
@@ -2581,7 +2599,10 @@ static int mt7925_start_nan(struct ieee80211_hw *hw,
 	if (err < 0)
 		goto out;
 
+	dev->nan_vif = vif;
 	err = mt7925_nan_enable(vif, dev, conf);
+	if (err && dev->nan_vif == vif)
+		dev->nan_vif = NULL;
 
 out:
 	mt792x_mutex_release(dev);
@@ -2604,6 +2625,8 @@ static int mt7925_stop_nan(struct ieee80211_hw *hw,
 
 	err = mt7925_mcu_add_bss_info(&dev->phy, NULL, link_conf,
 				      NULL, false);
+	if (!err && dev->nan_vif == vif)
+		dev->nan_vif = NULL;
 out:
 	mt792x_mutex_release(dev);
 
@@ -2652,7 +2675,7 @@ const struct ieee80211_ops mt7925_ops = {
 	.start = mt7925_start,
 	.stop = mt792x_stop,
 	.add_interface = mt7925_add_interface,
-	.remove_interface = mt792x_remove_interface,
+	.remove_interface = mt7925_remove_interface,
 	.config = mt7925_config,
 	.conf_tx = mt7925_conf_tx,
 	.configure_filter = mt7925_configure_filter,
