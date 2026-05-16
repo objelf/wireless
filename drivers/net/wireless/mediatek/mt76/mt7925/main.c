@@ -2639,11 +2639,12 @@ static int mt7925_stop_nan(struct ieee80211_hw *hw,
 
 	err = mt7925_nan_disable(vif, dev);
 	if (err < 0)
-		goto out;
+		goto clear_vif;
 
 	err = mt7925_mcu_add_bss_info(&dev->phy, NULL, link_conf,
 				      NULL, false);
-	if (!err && dev->nan_vif == vif)
+clear_vif:
+	if (dev->nan_vif == vif)
 		dev->nan_vif = NULL;
 out:
 	mt792x_mutex_release(dev);
