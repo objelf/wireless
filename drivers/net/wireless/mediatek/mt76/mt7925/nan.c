@@ -500,60 +500,7 @@ void mt7925_nan_mcu_event(struct mt792x_dev *dev, struct sk_buff *skb)
 	}
 }
 
-int mt7925_nan_set_nmi_addr(struct ieee80211_vif *vif,
-			    struct mt792x_dev *dev,
-			    const u8 *mac_address)
-{
-	struct {
-		u8 rsv[4];
-		struct mt7925_nan_nmi_addr_tlv nmi_addr_tlv;
-	} nmi_cmd = {
-		.rsv = { 0 },
-		.nmi_addr_tlv = {
-			.tag = cpu_to_le16(NAN_UNI_CMD_CHANGE_NMI_ADDRESS),
-			.len = cpu_to_le16(sizeof(struct mt7925_nan_nmi_addr_tlv)),
-		},
-	};
-	struct mt76_dev *mdev;
 
-	if (!dev || !mac_address)
-		return -EINVAL;
-
-	if (is_zero_ether_addr(mac_address) ||
-	    is_multicast_ether_addr(mac_address)) {
-		dev_err(dev->mt76.dev, "Invalid MAC address for NMI\n");
-		return -EINVAL;
-	}
-
-	mdev = &dev->mt76;
-	memcpy(nmi_cmd.nmi_addr_tlv.nmi_addr, mac_address, ETH_ALEN);
-
-	dev_info(dev->mt76.dev, "Setting NMI address: %pM\n", mac_address);
-
-	return mt76_mcu_send_msg(mdev, MCU_UNI_CMD(NAN), &nmi_cmd,
-				 sizeof(nmi_cmd), true);
-}
-
-int mt7925_nan_set_ndi_addr(struct ieee80211_vif *vif,
-			    struct mt792x_dev *dev,
-			    const u8 *mac_address, u8 ndi_idx)
-{
-	if (!dev || !vif || !mac_address)
-		return -EINVAL;
-
-	if (is_zero_ether_addr(mac_address) ||
-	    is_multicast_ether_addr(mac_address)) {
-		dev_err(dev->mt76.dev, "Invalid MAC address for NDI\n");
-		return -EINVAL;
-	}
-
-	dev_info(dev->mt76.dev, "NDI#%u, Setting MAC address: %pM\n",
-		 ndi_idx, mac_address);
-
-	memcpy(vif->addr, mac_address, ETH_ALEN);
-
-	return 0;
-}
 
 static int mt7925_nan_avail_ctrl_tlv(struct sk_buff *skb,
 				     struct ieee80211_vif *vif)
