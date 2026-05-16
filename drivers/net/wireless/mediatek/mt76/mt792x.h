@@ -118,7 +118,6 @@ struct mt792x_link_sta {
 
 struct mt792x_sta_nan_sched {
 	/* protects NAN peer schedule state */
-	spinlock_t lock;
 	u16 committed_dw;
 	u32 sch_idx;
 	bool idx_assigned;
@@ -170,7 +169,6 @@ struct mt792x_nan {
 	struct mt792x_nan_conf conf;
 
 	/* Scheduler */
-	spinlock_t state_lock;
 	struct cfg80211_chan_def local_sched[CFG80211_NAN_SCHED_NUM_TIME_SLOTS];
 	u32 seq_id;
 

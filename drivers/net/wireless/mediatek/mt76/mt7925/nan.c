@@ -596,7 +596,6 @@ static u32 mt7925_nan_slot_to_bitmap(struct ieee80211_vif *vif,
 	u32 num_channels = 0;
 	u32 i, j;
 
-	spin_lock_bh(&mvif->nan.state_lock);
 
 	for (i = 0; i < ARRAY_SIZE(mvif->nan.local_sched); i++) {
 		struct ieee80211_nan_channel *slot = slots[i];
@@ -632,7 +631,6 @@ static u32 mt7925_nan_slot_to_bitmap(struct ieee80211_vif *vif,
 		}
 	}
 
-	spin_unlock_bh(&mvif->nan.state_lock);
 
 	return num_channels;
 }
