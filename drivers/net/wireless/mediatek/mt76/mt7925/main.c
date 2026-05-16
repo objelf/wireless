@@ -2157,6 +2157,9 @@ static void mt7925_vif_cfg_changed(struct ieee80211_hw *hw,
 		}
 	}
 
+	if (changed & BSS_CHANGED_NAN_LOCAL_SCHED)
+		mt7925_nan_local_sched_changed(dev, vif);
+
 	mt792x_mutex_release(dev);
 }
 
@@ -2644,11 +2647,6 @@ static int mt7925_nan_change_conf(struct ieee80211_hw *hw,
 	mt792x_mutex_acquire(dev);
 
 	err = mt7925_nan_change_configure(vif, dev, conf);
-
-	if (changes & BSS_CHANGED_NAN_LOCAL_SCHED) {
-		dev_info(dev->mt76.dev, "%s: local schedule changed\n", __func__);
-		mt7925_nan_local_sched_changed(dev, vif);
-	}
 
 	mt792x_mutex_release(dev);
 

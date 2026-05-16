@@ -653,6 +653,7 @@ void mt7925_nan_local_sched_changed(struct mt792x_dev *dev,
 	struct mt7925_nan_common_hdr *hdr;
 	struct mt76_dev *mdev;
 	struct sk_buff *skb;
+	int ret;
 
 	if (!dev || !vif)
 		return;
@@ -672,8 +673,10 @@ void mt7925_nan_local_sched_changed(struct mt792x_dev *dev,
 		return;
 	}
 
-	mt76_mcu_skb_send_msg(mdev, skb,
-			      MCU_UNI_CMD(NAN), true);
+	ret = mt76_mcu_skb_send_msg(mdev, skb,
+				    MCU_UNI_CMD(NAN), true);
+	if (!ret && vif->cfg.nan_sched.deferred)
+		ieee80211_nan_sched_update_done(vif);
 }
 
 static int mt7925_nan_peer_rec_tlv(struct sk_buff *skb,
