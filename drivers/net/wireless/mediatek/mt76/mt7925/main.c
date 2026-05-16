@@ -2594,11 +2594,19 @@ static int mt7925_start_nan(struct ieee80211_hw *hw,
 {
 	struct mt792x_dev *dev = mt792x_hw_dev(hw);
 	struct ieee80211_bss_conf *link_conf = &vif->bss_conf;
+	struct ieee80211_channel *chan;
 	int err = 0;
 
 	mt792x_mutex_acquire(dev);
 
-	link_conf->chanreq.oper.chan = conf->band_cfgs[NL80211_BAND_2GHZ].chan;
+	chan = conf->band_cfgs[NL80211_BAND_2GHZ].chan;
+	if (!chan) {
+		err = -EINVAL;
+		goto out;
+	}
+
+	cfg80211_chandef_create(&link_conf->chanreq.oper, chan,
+				NL80211_CHAN_NO_HT);
 
 	err = mt7925_mcu_add_bss_info(&dev->phy, NULL, link_conf,
 				      NULL, true);
