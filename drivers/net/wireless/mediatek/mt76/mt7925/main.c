@@ -1241,6 +1241,7 @@ static void mt7925_mac_link_sta_assoc(struct mt76_dev *mdev,
 int mt7925_mac_sta_event(struct mt76_dev *mdev, struct ieee80211_vif *vif,
 			 struct ieee80211_sta *sta, enum mt76_sta_event ev)
 {
+	struct mt792x_dev *dev = container_of(mdev, struct mt792x_dev, mt76);
 	struct ieee80211_link_sta *link_sta = &sta->deflink;
 
 	switch (ev) {
@@ -1259,8 +1260,19 @@ int mt7925_mac_sta_event(struct mt76_dev *mdev, struct ieee80211_vif *vif,
 	case MT76_STA_EVENT_AUTHORIZE:
 		dev_info(mdev->dev, "NANDBG: sta_event AUTHORIZE vif_type=%d vif=%pM sta=%pM\n",
 			 vif->type, vif->addr, sta->addr);
-		if (vif->type == NL80211_IFTYPE_NAN_DATA)
-			return mt792x_nan_map_sta_rec(mdev, vif, sta);
+		if (vif->type == NL80211_IFTYPE_NAN_DATA) {
+			int ret;
+
+			mt792x_mutex_acquire(dev);
+			ret = mt792x_nan_map_sta_rec(mdev, vif, sta);
+			mt792x_mutex_release(dev);
+
+			dev_info(mdev->dev,
+				 "NANDBG: sta_event AUTHORIZE map_sta_rec ret=%d vif=%pM sta=%pM\n",
+				 ret, vif->addr, sta->addr);
+
+			return ret;
+		}
 		break;
 	default:
 		break;
