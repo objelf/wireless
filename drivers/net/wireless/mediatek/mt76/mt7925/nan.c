@@ -666,16 +666,18 @@ void mt7925_nan_local_sched_changed(struct mt792x_dev *dev,
 	struct mt7925_nan_common_hdr *hdr;
 	struct mt76_dev *mdev;
 	struct sk_buff *skb;
-	int ret;
+	int ret = -ENOMEM;
 
 	if (!dev || !vif)
 		return;
 
 	mdev = &dev->mt76;
 
+	mt792x_mutex_acquire(dev);
+
 	skb = mt76_mcu_msg_alloc(mdev, NULL, MT7925_NAN_AVAIL_MAX_SIZE);
 	if (!skb)
-		return;
+		goto out;
 
 	hdr = (struct mt7925_nan_common_hdr *)skb_put(skb, sizeof(*hdr));
 	memset(hdr, 0, sizeof(*hdr));
@@ -683,11 +685,14 @@ void mt7925_nan_local_sched_changed(struct mt792x_dev *dev,
 	if (mt7925_nan_avail_ctrl_tlv(skb, vif) ||
 	    mt7925_nan_avail_tlv(skb, vif)) {
 		dev_kfree_skb(skb);
-		return;
+		goto out;
 	}
 
 	ret = mt76_mcu_skb_send_msg(mdev, skb,
 				    MCU_UNI_CMD(NAN), true);
+out:
+	mt792x_mutex_release(dev);
+
 	if (!ret && vif->cfg.nan_sched.deferred)
 		ieee80211_nan_sched_update_done(vif);
 }
