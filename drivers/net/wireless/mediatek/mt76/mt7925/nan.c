@@ -125,8 +125,7 @@ mt7925_nan_update_conf(struct mt792x_vif *mvif,
 	mvif->nan.conf.enable_dw_notification =
 		conf->enable_dw_notification;
 
-	if (conf->cluster_id)
-		memcpy(mvif->nan.conf.cluster_id, conf->cluster_id, ETH_ALEN);
+	memcpy(mvif->nan.conf.cluster_id, conf->cluster_id, ETH_ALEN);
 }
 
 int mt7925_nan_enable(struct ieee80211_vif *vif,
@@ -529,85 +528,6 @@ int mt7925_nan_set_ndi_addr(struct ieee80211_vif *vif,
 	memcpy(vif->addr, mac_address, ETH_ALEN);
 
 	return 0;
-}
-
-static int mt7925_nan_manage_key(struct ieee80211_vif *vif,
-				 struct mt792x_dev *dev,
-				 enum mt7925_nan_key_operation key_op,
-				 enum mt7925_nan_key_type key_type,
-				 u16 wtbl_entry, u8 *local_addr,
-				 u8 *peer_addr, u8 algo_id, u8 key_id,
-				 u8 key_len, u8 *key_data, u8 *pn,
-				 u8 init, u8 key_exist)
-{
-	struct {
-		u8 rsv[4];
-		struct mt7925_nan_key_mgmt_tlv key_mgmt_tlv;
-	} key_cmd = {
-		.rsv = { 0 },
-		.key_mgmt_tlv = {
-			.tag = cpu_to_le16(NAN_UNI_CMD_KEY_MANAGEMENT),
-			.len = cpu_to_le16(sizeof(struct mt7925_nan_key_mgmt_tlv)),
-			.op = (u8)key_op,
-			.key_type = (u8)key_type,
-			.wtbl_idx = cpu_to_le16(wtbl_entry),
-			.init = init,
-			.key_exist = key_exist,
-			.is_nmi_tk = 0,
-		},
-	};
-	struct mt7925_nan_key_mgmt_tlv *key_mgmt = &key_cmd.key_mgmt_tlv;
-	struct mt76_dev *mdev = &dev->mt76;
-
-	dev_warn(dev->mt76.dev,
-		 "[NmiCxt] OP:%u,Type:%u,Wtbl:%u,Init:%u,KeyExist:%u\n",
-		 key_op, key_type, wtbl_entry, init, key_exist);
-
-	if (!local_addr || !peer_addr || key_type >= NAN_KEY_TYPE_NUM ||
-	    wtbl_entry == WTBL_RESERVED_ENTRY ||
-	    (key_op == NAN_KEY_OP_SET_KEY && !key_data)) {
-		dev_warn(dev->mt76.dev,
-			 "local_addr:%p peer_addr:%p key_type:%u wtbl_entry:%u key_op:%u key_data:%p\n",
-			 local_addr, peer_addr, key_type, wtbl_entry,
-			 key_op, key_data);
-		return -EINVAL;
-	}
-
-	memcpy(key_mgmt->local_addr, local_addr, ETH_ALEN);
-	memcpy(key_mgmt->peer_addr, peer_addr, ETH_ALEN);
-
-	switch (key_type) {
-	case NAN_KEY_TYPE_NMI_CXT_MGMT_KEY:
-		key_mgmt->nmi_key_idx = 0;
-		key_mgmt->is_nmi_tk = true;
-		break;
-	case NAN_KEY_TYPE_MC_TX_KEY:
-		key_mgmt->ndi_idx = 0;
-		break;
-	case NAN_KEY_TYPE_MC_RX_KEY:
-	case NAN_KEY_TYPE_MC_MGMT_RX_KEY:
-		key_mgmt->mc_rx_idx = (u8)wtbl_entry;
-		break;
-	default:
-		return -EINVAL;
-	}
-
-	if (key_op == NAN_KEY_OP_SET_KEY) {
-		key_mgmt->algorithm_id = algo_id;
-		key_mgmt->key_id = key_id;
-		key_mgmt->key_len = key_len;
-
-		if (key_type == NAN_KEY_TYPE_MC_MGMT_RX_KEY)
-			memcpy(key_mgmt->key_rsc, pn,
-			       min_t(size_t, NAN_PACKET_NUMBER_LEN,
-				     sizeof(key_mgmt->key_rsc)));
-
-		memcpy(key_mgmt->key_material, key_data,
-		       min_t(size_t, key_len, sizeof(key_mgmt->key_material)));
-	}
-
-	return mt76_mcu_send_msg(mdev, MCU_UNI_CMD(NAN), &key_cmd,
-				 sizeof(key_cmd), true);
 }
 
 static int mt7925_nan_avail_ctrl_tlv(struct sk_buff *skb,

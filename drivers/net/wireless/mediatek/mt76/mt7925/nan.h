@@ -16,8 +16,6 @@
 #define NAN_MAX_MASTER_PREFERENCE	255
 #define NAN_DEFAULT_DW_INTERVAL		1
 #define NAN_DEFAULT_DISC_BCN_INTERVAL	100
-#define NAN_PACKET_NUMBER_LEN		6
-#define WTBL_RESERVED_ENTRY		255
 #define NAN_TOTAL_DW			16
 #define NAN_SUPPORTED_2G_FAW_CH_NUM	4
 #define NAN_SUPPORTED_5G_FAW_CH_NUM	4
@@ -92,24 +90,6 @@ enum nan_uni_event_tag {
 enum nan_disc_event_type {
 	NAN_EVENT_ID_DISC_MAC_ADDR		= 0,
 	NAN_EVENT_ID_JOINED_CLUSTER		= 2,
-};
-
-enum mt7925_nan_key_type {
-	NAN_KEY_TYPE_RSVD = 0,
-	NAN_KEY_TYPE_NMI_CXT_MGMT_KEY,
-	NAN_KEY_TYPE_MC_TX_KEY,
-	NAN_KEY_TYPE_MC_RX_KEY,
-	NAN_KEY_TYPE_MC_MGMT_TX_KEY,
-	NAN_KEY_TYPE_MC_MGMT_RX_KEY,
-	NAN_KEY_TYPE_NUM,
-};
-
-enum mt7925_nan_key_operation {
-	NAN_KEY_OP_ACTIVATE = 0,
-	NAN_KEY_OP_INACTIVATE,
-	NAN_KEY_OP_SET_KEY,
-	NAN_KEY_OP_CLS_KEY,
-	NAN_KEY_OP_NUM,
 };
 
 /* NAN 4.0 Table 79. Device Capability attribute format, Supported Bands */
@@ -332,34 +312,6 @@ struct mt7925_nan_nmi_addr_tlv {
 	__le16 tag;
 	__le16 len;
 	u8 nmi_addr[ETH_ALEN];
-} __packed __aligned(4);
-
-struct mt7925_nan_key_mgmt_tlv {
-	__le16 tag;
-	__le16 len;
-	u8 op;
-	u8 key_type;
-	__le16 wtbl_idx;
-
-	u8 local_addr[ETH_ALEN];
-	u8 peer_addr[ETH_ALEN];
-
-	u8 nmi_key_idx;
-	u8 ndc_idx;
-	u8 ndi_idx;
-	u8 mc_rx_idx;
-
-	u8 init;
-	u8 key_exist;
-	u8 is_nmi_tk;
-	u8 rsv[1];
-
-	u8 algorithm_id;
-	u8 key_id;
-	u8 key_len;
-	u8 rsv2;
-	u8 key_material[32];
-	u8 key_rsc[16];
 } __packed __aligned(4);
 
 struct mt7925_nan_avail_ctrl_tlv {
