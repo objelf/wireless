@@ -2634,10 +2634,11 @@ static int mt7925_start_nan(struct ieee80211_hw *hw,
 		goto out;
 
 	dev->nan_vif = vif;
+#if 0
 	err = mt7925_nan_set_nmi_addr(dev, vif->addr);
 	if (err)
 		goto rollback_bss;
-
+#endif
 	err = mt7925_nan_enable(vif, dev, conf);
 	dev_info(dev->mt76.dev, "NANDBG: mt7925_nan_enable ret=%d nan_vif=%p vif=%pM\n",
 		 err, dev->nan_vif, vif->addr);
