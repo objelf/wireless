@@ -133,13 +133,13 @@ static int mt7921u_rx_aggr_len(struct mt76_dev *mdev, void *data, int len)
 			break;
 		}
 	}
-
+#if 0
 	if (type != PKT_TYPE_NORMAL)
 		dev_info(mdev->dev,
 			 "mt7921u rx aggr len=%d type=%u flag=0x%x sw_type=0x%04x agg_len=%d rxd0=0x%08x chip=0x%04x\n",
 			 len, type, flag, sw_type, agg_len, rxd0,
 			 mt76_chip(mdev));
-
+#endif
 	return agg_len;
 }
 

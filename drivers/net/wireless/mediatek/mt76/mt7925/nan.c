@@ -437,7 +437,7 @@ mt7925_nan_handle_dw_ind(struct mt792x_dev *dev, struct tlv *tlv)
 	freq = ieee80211_channel_to_frequency(channel, band);
 	chan = ieee80211_get_channel(dev->mt76.hw->wiphy, freq);
 	if (!chan) {
-		dev_dbg(dev->mt76.dev,
+		dev_info(dev->mt76.dev,
 			"nan: no channel for dw end event ch=%u dw=%u\n",
 			channel, dw_num);
 		return;
@@ -477,7 +477,7 @@ mt7925_nan_mcu_handle_de_event(struct mt792x_dev *dev, struct tlv *tlv)
 
 	memcpy(cluster_id, de_evt->cluster_id, ETH_ALEN);
 
-	dev_dbg(dev->mt76.dev, "nan: evt=%u cluster=%pM\n",
+	dev_info(dev->mt76.dev, "nan: evt=%u cluster=%pM\n",
 		de_evt->event_type, de_evt->cluster_id);
 
 	if (de_evt->event_type != NAN_EVENT_ID_JOINED_CLUSTER)
@@ -488,10 +488,10 @@ mt7925_nan_mcu_handle_de_event(struct mt792x_dev *dev, struct tlv *tlv)
 		return;
 	}
 
-	dev_dbg(dev->mt76.dev, "nan: anchor_master_rank=%*phN\n",
+	dev_info(dev->mt76.dev, "nan: anchor_master_rank=%*phN\n",
 		NAN_ANCHOR_MASTER_RANK_NUM, de_evt->anchor_master_rank);
 
-	dev_dbg(dev->mt76.dev, "nan: own_nmi=%pM master_nmi=%pM\n",
+	dev_info(dev->mt76.dev, "nan: own_nmi=%pM master_nmi=%pM\n",
 		de_evt->own_nmi, de_evt->master_nmi);
 
 	ieee80211_nan_cluster_joined(dev->nan_vif, cluster_id, true, GFP_KERNEL);
