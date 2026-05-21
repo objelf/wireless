@@ -413,7 +413,8 @@ static int mt7925_mac_link_bss_add(struct mt792x_dev *dev,
 			      0 : mconf->mt76.idx % MT76_CONNAC_MAX_WMM_SETS;
 	mconf->mt76.link_idx = hweight16(mvif->valid_links);
 
-	if (mvif->phy->mt76->chandef.chan->band != NL80211_BAND_2GHZ)
+	if (mvif->phy->mt76->chandef.chan &&
+	    mvif->phy->mt76->chandef.chan->band != NL80211_BAND_2GHZ)
 		mconf->mt76.basic_rates_idx = MT792x_BASIC_RATES_TBL + 4;
 	else
 		mconf->mt76.basic_rates_idx = MT792x_BASIC_RATES_TBL;
