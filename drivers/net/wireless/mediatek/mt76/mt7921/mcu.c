@@ -187,11 +187,13 @@ mt7921_mcu_scan_event(struct mt792x_dev *dev, struct sk_buff *skb)
 		scan_done = (struct mt76_connac_hw_scan_done *)rxd->tlv;
 		scan_seq = scan_done->seq_num;
 	}
+#if 0
 
 	dev_info(dev->mt76.dev,
 		 "scan event enqueue: eid=0x%x seq=%u option=0x%x scan_seq=0x%x scanning=%d qlen=%u skb_len=%u\n",
 		 rxd->eid, rxd->seq, rxd->option, scan_seq, scanning,
 		 skb_queue_len(&phy->scan_event_list), skb->len);
+#endif
 
 	spin_lock_bh(&dev->mt76.lock);
 	__skb_queue_tail(&phy->scan_event_list, skb);
