@@ -2177,8 +2177,11 @@ static void mt7925_vif_cfg_changed(struct ieee80211_hw *hw,
 	mt792x_mutex_release(dev);
 
 	if (vif->type == NL80211_IFTYPE_NAN &&
-	    changed & BSS_CHANGED_NAN_LOCAL_SCHED)
+	    changed & BSS_CHANGED_NAN_LOCAL_SCHED) {
+		dev_info(dev->mt76.dev, "NANDBG: bss_info_changed local_sched vif=%pM changed=0x%llx\n",
+			 vif->addr, changed);
 		mt7925_nan_local_sched_changed(dev, vif);
+	}
 }
 
 static void mt7925_link_info_changed(struct ieee80211_hw *hw,
@@ -2710,7 +2713,9 @@ static int mt7925_nan_peer_sched_changed(struct ieee80211_hw *hw,
 
 	dev_info(dev->mt76.dev, "NANDBG: nan_peer_sched_changed enter sta=%pM\n",
 		 sta->addr);
+	dev_info(dev->mt76.dev, "NANDBG: nan_peer_sched_changed enter sta=%pM\n", sta->addr);
 	err = mt792x_nan_set_peer_schedule(dev, sta);
+	dev_info(dev->mt76.dev, "NANDBG: nan_peer_sched_changed ret=%d sta=%pM\n", err, sta->addr);
 	dev_info(dev->mt76.dev, "NANDBG: nan_peer_sched_changed ret=%d sta=%pM\n",
 		 err, sta->addr);
 

@@ -905,6 +905,8 @@ int mt792x_nan_set_peer_schedule(struct mt792x_dev *dev,
 	}
 
 	ret = mt76_mcu_skb_send_msg(mdev, skb, MCU_UNI_CMD(NAN), true);
+	dev_info(mdev->dev, "NANDBG: set_peer_schedule MCU ret=%d sta=%pM\n",
+		 ret, sta->addr);
 	dev_info(mdev->dev, "NANDBG: set_peer_schedule MCU ret=%d sta=%pM sch_idx=%u idx_allocated=%d\n",
 		 ret, sta->addr, msta->nan_sched.sch_idx, idx_allocated);
 	if (ret && idx_allocated)
