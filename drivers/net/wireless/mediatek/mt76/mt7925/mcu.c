@@ -1873,9 +1873,11 @@ mt7925_mcu_sta_phy_tlv(struct sk_buff *skb,
 	phy = (struct sta_rec_phy *)tlv;
 
 	if (mt7925_vif_is_nan(vif)) {
+		enum nl80211_band band = chandef->chan ? chandef->chan->band
+						       : NL80211_BAND_2GHZ;	
 		phy->phy_type = PHY_TYPE_BIT_OFDM | PHY_TYPE_BIT_ERP;
 		phy->phy_type |= mt76_connac_get_phy_mode_v2(mvif->phy->mt76, vif,
-							     NL80211_BAND_5GHZ,
+							     band,
 							     link_sta);
 	} else {
 		phy->phy_type = mt76_connac_get_phy_mode_v2(mvif->phy->mt76, vif,
