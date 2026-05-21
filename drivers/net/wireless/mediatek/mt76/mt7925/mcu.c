@@ -1960,7 +1960,7 @@ mt7925_mcu_sta_rate_ctrl_tlv(struct sk_buff *skb,
 	ra_info = (struct sta_rec_ra_info *)tlv;
 
 	if (mt7925_vif_is_nan(vif))
-		band = NL80211_BAND_5GHZ;
+		band = chandef->chan ? chandef->chan->band : NL80211_BAND_2GHZ;
 	else
 		band = chandef->chan->band;
 
@@ -2790,7 +2790,7 @@ mt7925_mcu_bss_bmc_tlv(struct sk_buff *skb, struct mt792x_phy *phy,
 	bmc = (struct bss_rate_tlv *)tlv;
 
 	if (mt7925_vif_is_nan(vif))
-		band = NL80211_BAND_5GHZ;
+		band = chandef->chan ? chandef->chan->band : NL80211_BAND_2GHZ;
 	else
 		band = chandef->chan->band;
 
