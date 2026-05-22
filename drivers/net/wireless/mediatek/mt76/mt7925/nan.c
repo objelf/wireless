@@ -1005,11 +1005,13 @@ int mt792x_nan_map_sta_rec(struct mt76_dev *mdev,
 	u8 nmi_addr[ETH_ALEN];
 	int ndp_ctx_id = 0;
 	int ret = -ENOMEM;
+	struct mt792x_dev *dev;
 	struct tlv *tlv;
 
 	if (!mdev || !vif || !sta)
 		return -EINVAL;
 
+	dev = container_of(mdev, struct mt792x_dev, mt76);
 	msta = (struct mt792x_sta *)sta->drv_priv;
 	mvif = (struct mt792x_vif *)vif->drv_priv;
 	dev_info(mdev->dev, "NANDBG: map_sta_rec enter ndi_vif=%pM ndi_sta=%pM wcid=%u\n",
@@ -1031,11 +1033,30 @@ int mt792x_nan_map_sta_rec(struct mt76_dev *mdev,
 		 nmi_msta->nan_sched.idx_assigned);
 
 	if (!nmi_msta->nan_sched.idx_assigned) {
+		if (!nmi_sta->nan_sched) {
+			rcu_read_unlock();
+			dev_err(mdev->dev,
+				"NAN: peer schedule missing for NDI sta %pM\n",
+				sta->addr);
+			return -EAGAIN;
+		}
+
 		rcu_read_unlock();
-		dev_err(mdev->dev,
-			"NAN: peer schedule not ready for NDI sta %pM\n",
-			sta->addr);
-		return -EAGAIN;
+		ret = mt792x_nan_set_peer_schedule(dev, nmi_sta);
+		if (ret)
+			return ret;
+
+		rcu_read_lock();
+		nmi_sta = rcu_dereference(sta->nmi);
+		if (!nmi_sta) {
+			rcu_read_unlock();
+			dev_err(mdev->dev,
+				"NAN: NMI sta not found for NDI sta %pM\n",
+				sta->addr);
+			return -EINVAL;
+		}
+
+		nmi_msta = (struct mt792x_sta *)nmi_sta->drv_priv;
 	}
 
 	ndp_ctx_id = find_first_zero_bit(&nmi_msta->nan_sched.ndp_ctx_bitmap,
