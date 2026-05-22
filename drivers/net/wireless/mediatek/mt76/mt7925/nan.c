@@ -954,6 +954,7 @@ int mt792x_nan_set_peer_rec(struct mt76_dev *mdev,
 	struct mt792x_sta *msta;
 	struct mt792x_nan *nan;
 	struct sk_buff *skb;
+	int ret;
 
 	if (!mdev || !sta)
 		return -EINVAL;
@@ -980,11 +981,14 @@ int mt792x_nan_set_peer_rec(struct mt76_dev *mdev,
 		return -ENOMEM;
 	}
 
+	ret = mt76_mcu_skb_send_msg(mdev, skb, MCU_UNI_CMD(NAN), true);
+	if (ret)
+		return ret;
+
 	clear_bit(msta->nan_sched.sch_idx, &nan->conn_bitmap);
 	msta->nan_sched.idx_assigned = false;
 
-	return mt76_mcu_skb_send_msg(mdev, skb,
-				     MCU_UNI_CMD(NAN), true);
+	return 0;
 }
 
 int mt792x_nan_map_sta_rec(struct mt76_dev *mdev,
