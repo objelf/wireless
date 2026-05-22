@@ -1024,6 +1024,14 @@ int mt792x_nan_map_sta_rec(struct mt76_dev *mdev,
 		 nmi_addr, nmi_msta->nan_sched.sch_idx,
 		 nmi_msta->nan_sched.idx_assigned);
 
+	if (!nmi_msta->nan_sched.idx_assigned) {
+		rcu_read_unlock();
+		dev_err(mdev->dev,
+			"NAN: peer schedule not ready for NDI sta %pM\n",
+			sta->addr);
+		return -EAGAIN;
+	}
+
 	ndp_ctx_id = find_first_zero_bit(&nmi_msta->nan_sched.ndp_ctx_bitmap,
 					 NAN_MAX_NDP_CXT);
 	if (ndp_ctx_id >= NAN_MAX_NDP_CXT) {
