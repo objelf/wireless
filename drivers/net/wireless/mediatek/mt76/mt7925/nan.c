@@ -126,6 +126,16 @@ static void mt7925_nan_set_scan_params(struct mt7925_nan_enable_req_tlv *req,
 		conf->scan_dwell_time < 255 ? conf->scan_dwell_time : 255;
 }
 
+static u16
+mt7925_nan_avail_attr_ctrl(const struct ieee80211_nan_sched_cfg *sched)
+{
+	if (sched->avail_blob_len < NAN_AVAIL_ATTR_CTRL_OFFSET + 2)
+		return 0;
+
+	return sched->avail_blob[NAN_AVAIL_ATTR_CTRL_OFFSET] |
+	       sched->avail_blob[NAN_AVAIL_ATTR_CTRL_OFFSET + 1] << 8;
+}
+
 static void
 mt7925_nan_update_conf(struct mt792x_vif *mvif,
 		       const struct cfg80211_nan_conf *conf)
@@ -556,11 +566,9 @@ static int mt7925_nan_avail_ctrl_tlv(struct sk_buff *skb,
 
 	sched = &vif->cfg.nan_sched;
 
-	if (sched->avail_blob_len >= (NAN_AVAIL_ATTR_CTRL_OFFSET + 2)) {
-		ctrl = le16_to_cpup((__le16 *)(sched->avail_blob +
-					       NAN_AVAIL_ATTR_CTRL_OFFSET));
+	ctrl = mt7925_nan_avail_attr_ctrl(sched);
+	if (sched->avail_blob_len >= NAN_AVAIL_ATTR_CTRL_OFFSET + 2)
 		seq_id = sched->avail_blob[NAN_AVAIL_SEQ_ID_OFFSET];
-	}
 
 	avail_ctrl_tlv = (struct mt7925_nan_avail_ctrl_tlv *)tlv;
 	avail_ctrl_tlv->avail_ctrl = ctrl & NAN_AVAIL_CTRL_CHECK_FOR_CHANGED;
@@ -634,9 +642,7 @@ static int mt7925_nan_avail_tlv(struct sk_buff *skb,
 
 	sched = &vif->cfg.nan_sched;
 
-	if (sched->avail_blob_len >= (NAN_AVAIL_ATTR_CTRL_OFFSET + 2))
-		ctrl = le16_to_cpup((__le16 *)(sched->avail_blob +
-					       NAN_AVAIL_ATTR_CTRL_OFFSET));
+	ctrl = mt7925_nan_avail_attr_ctrl(sched);
 
 	avail_tlv = (struct mt7925_nan_avail_entry_tlv *)tlv;
 	avail_tlv->map_id = ctrl & NAN_AVAIL_CTRL_MAPID;
