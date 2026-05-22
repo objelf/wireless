@@ -66,7 +66,7 @@ static void mt7925_nan_set_cluster_id(struct mt7925_nan_enable_req_tlv *req,
 	if (!cluster_id)
 		return;
 
-	req->cluster_high = cpu_to_le16(*(const u16 *)(cluster_id + 4));
+	req->cluster_high = cpu_to_le16(cluster_id[4] | cluster_id[5] << 8);
 	req->cluster_low = cpu_to_le16((u16)cluster_id[3]);
 }
 
@@ -121,7 +121,7 @@ static void mt7925_nan_set_scan_params(struct mt7925_nan_enable_req_tlv *req,
 				       struct cfg80211_nan_conf *conf)
 {
 	req->scan_params_val.scan_period[0] =
-		conf->scan_period < 255 ? conf->scan_period : 255;
+		cpu_to_le16(conf->scan_period < 255 ? conf->scan_period : 255);
 	req->scan_params_val.dwell_time[0] =
 		conf->scan_dwell_time < 255 ? conf->scan_dwell_time : 255;
 }
