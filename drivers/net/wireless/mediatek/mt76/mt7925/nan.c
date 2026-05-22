@@ -995,6 +995,7 @@ int mt792x_nan_map_sta_rec(struct mt76_dev *mdev,
 	struct mt7925_nan_common_hdr *hdr;
 	struct ieee80211_sta *nmi_sta;
 	struct mt792x_sta *nmi_msta;
+	struct mt792x_vif *mvif;
 	struct mt792x_sta *msta;
 	struct sk_buff *skb;
 	u8 nmi_addr[ETH_ALEN];
@@ -1006,6 +1007,7 @@ int mt792x_nan_map_sta_rec(struct mt76_dev *mdev,
 		return -EINVAL;
 
 	msta = (struct mt792x_sta *)sta->drv_priv;
+	mvif = (struct mt792x_vif *)vif->drv_priv;
 	dev_info(mdev->dev, "NANDBG: map_sta_rec enter ndi_vif=%pM ndi_sta=%pM wcid=%u\n",
 		 vif->addr, sta->addr, msta->deflink.wcid.idx);
 
@@ -1068,7 +1070,7 @@ int mt792x_nan_map_sta_rec(struct mt76_dev *mdev,
 	memcpy(map_tlv->nmi_addr, nmi_addr, ETH_ALEN);
 	map_tlv->sta_rec_idx = msta->deflink.wcid.idx;
 	map_tlv->ndp_ctx_id = ndp_ctx_id;
-	map_tlv->role_idx = 0;
+	map_tlv->role_idx = cpu_to_le32(mvif->bss_conf.mt76.idx);
 	memcpy(map_tlv->ndi_addr, vif->addr, ETH_ALEN);
 
 	ret = mt76_mcu_skb_send_msg(mdev, skb,
