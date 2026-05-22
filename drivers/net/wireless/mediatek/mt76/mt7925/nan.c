@@ -592,7 +592,7 @@ static u32 mt7925_nan_slot_to_bitmap(struct ieee80211_vif *vif,
 		for (j = 0; j < num_channels; j++) {
 			if (ch_list[j].ch_info.primary_ch ==
 			    slot_chan->chan->hw_value) {
-				ch_list[j].avail_map[0] |= BIT(i);
+				ch_list[j].avail_map[i] |= 0xffffffff;
 				ch_list[j].num++;
 				is_found = true;
 				break;
@@ -604,7 +604,7 @@ static u32 mt7925_nan_slot_to_bitmap(struct ieee80211_vif *vif,
 				slot_chan->chan->hw_value;
 			ch_list[num_channels].ch_info.op_class =
 				slot->channel_entry[0];
-			ch_list[num_channels].avail_map[0] = BIT(i);
+			ch_list[num_channels].avail_map[i] = 0xffffffff;
 			ch_list[num_channels].num++;
 			ch_list[num_channels].is_valid++;
 			num_channels++;
@@ -815,7 +815,7 @@ mt7925_nan_fill_crb_committed(struct mt7925_nan_sched_update_crb_tlv *crb_tlv,
 			if (!ch || !ch->chanctx_conf)
 				continue;
 
-			tl->avail_map[0] |= cpu_to_le32(BIT(slot));
+			tl->avail_map[slot] |= cpu_to_le32(0xffffffff);
 		}
 	}
 }
