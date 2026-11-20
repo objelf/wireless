@@ -759,6 +759,25 @@ int mt7921_mcu_ce_bss_created(struct mt792x_dev *dev,
 				 &req, sizeof(req), false);
 }
 
+static int
+mt7921_mcu_ce_set_monitor(struct mt792x_dev *dev, bool enable,
+			  struct cfg80211_chan_def *chandef)
+{
+	struct mt7921_ce_monitor req = {
+		.enable = enable,
+	};
+
+	if (chandef) {
+		req.band = mt7921_mcu_ce_band(chandef->chan->band);
+		req.primary_chan = chandef->chan->hw_value;
+		mt7921_mcu_ce_chan(chandef, &req.sco, &req.width,
+				   &req.center_chan, &req.center_chan2);
+	}
+
+	return mt76_mcu_send_msg(&dev->mt76, MCU_CE_CMD(SET_MONITOR),
+				 &req, sizeof(req), false);
+}
+
 int mt7921_mcu_ce_set_rxfilter(struct mt792x_dev *dev, unsigned int fif)
 {
 	struct {
@@ -2179,6 +2198,10 @@ int mt7921_mcu_set_sniffer(struct mt792x_dev *dev, struct ieee80211_vif *vif,
 		},
 	};
 
+	if (dev->fw_legacy)
+		return mt7921_mcu_ce_set_monitor(dev, enable,
+						 &dev->mphy.chandef);
+
 	return mt76_mcu_send_msg(&dev->mt76, MCU_UNI_CMD(SNIFFER), &req, sizeof(req),
 				 true);
 }
@@ -2246,6 +2269,9 @@ int mt7921_mcu_config_sniffer(struct mt792x_vif *vif,
 		req.tlv.sco = 1; /* SCA */
 	else if (req.tlv.control_ch > req.tlv.center_ch)
 		req.tlv.sco = 3; /* SCB */
+
+	if (vif->phy->dev->fw_legacy)
+		return mt7921_mcu_ce_set_monitor(vif->phy->dev, true, chandef);
 
 	return mt76_mcu_send_msg(vif->phy->mt76->dev, MCU_UNI_CMD(SNIFFER),
 				 &req, sizeof(req), true);

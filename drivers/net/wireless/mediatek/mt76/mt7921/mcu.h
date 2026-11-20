@@ -131,6 +131,7 @@ enum {
 	MCU_CE_CMD_REMOVE_STA_REC = 0x14,
 	MCU_CE_CMD_SET_BSS_CREATED = 0x15,
 	MCU_CE_CMD_SET_BSS_RLM = 0x19,
+	MCU_CE_CMD_SET_MONITOR = 0xfc,
 };
 
 enum {
@@ -445,6 +446,20 @@ struct mt7921_ce_bss_created {
 	__le16 bcn_interval;
 	__le16 atim_window;
 	u8 rsv[2];
+} __packed;
+
+struct mt7921_ce_monitor {
+	u8 enable;
+	u8 band;
+	u8 primary_chan;
+	u8 sco;
+	u8 width;
+	u8 center_chan;
+	u8 center_chan2;
+	u8 band_idx;
+	__le16 aid;
+	u8 drop_fcs_err;
+	u8 rsv[5];
 } __packed;
 
 struct mt7921_ce_rx_addba {
