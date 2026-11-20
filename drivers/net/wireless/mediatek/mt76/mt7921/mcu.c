@@ -760,6 +760,60 @@ int mt7921_mcu_ce_bss_created(struct mt792x_dev *dev,
 }
 
 static int
+mt7921_mcu_ce_beacon(struct mt792x_dev *dev, struct ieee80211_hw *hw,
+		     struct ieee80211_vif *vif, bool enable)
+{
+	struct mt792x_vif *mvif = (struct mt792x_vif *)vif->drv_priv;
+	struct ieee80211_mutable_offsets offs;
+	struct mt7921_ce_beacon *req;
+	struct ieee80211_mgmt *mgmt;
+	struct sk_buff *bcn, *skb;
+	int hdr_len, tim_end;
+
+	if (!enable) {
+		struct mt7921_ce_beacon del = {
+			.method = MT7921_CE_BCN_DELETE_ALL,
+			.bss_idx = mvif->bss_conf.mt76.idx,
+		};
+
+		return mt76_mcu_send_msg(&dev->mt76, MCU_CE_CMD(UPDATE_BEACON),
+					 &del, sizeof(del), false);
+	}
+
+	bcn = ieee80211_beacon_get_template(hw, vif, &offs, 0);
+	if (!bcn)
+		return -EINVAL;
+
+	hdr_len = offsetof(struct ieee80211_mgmt, u.beacon.variable);
+	tim_end = offs.tim_offset + offs.tim_length;
+	if (bcn->len < hdr_len || offs.tim_offset < hdr_len ||
+	    tim_end > bcn->len) {
+		dev_kfree_skb(bcn);
+		return -EINVAL;
+	}
+
+	skb = mt76_mcu_msg_alloc(&dev->mt76, NULL, sizeof(*req) + bcn->len);
+	if (!skb) {
+		dev_kfree_skb(bcn);
+		return -ENOMEM;
+	}
+
+	mgmt = (struct ieee80211_mgmt *)bcn->data;
+	req = skb_put_zero(skb, sizeof(*req));
+	req->method = MT7921_CE_BCN_UPDATE_ALL;
+	req->bss_idx = mvif->bss_conf.mt76.idx;
+	req->capability = mgmt->u.beacon.capab_info;
+	/* the firmware builds the header and the TIM, hand it the rest */
+	skb_put_data(skb, bcn->data + hdr_len, offs.tim_offset - hdr_len);
+	skb_put_data(skb, bcn->data + tim_end, bcn->len - tim_end);
+	req->ie_len = cpu_to_le16(skb->len - sizeof(*req));
+	dev_kfree_skb(bcn);
+
+	return mt76_mcu_skb_send_msg(&dev->mt76, skb,
+				     MCU_CE_CMD(UPDATE_BEACON), false);
+}
+
+static int
 mt7921_mcu_ce_set_monitor(struct mt792x_dev *dev, bool enable,
 			  struct cfg80211_chan_def *chandef)
 {
@@ -2320,6 +2374,9 @@ mt7921_mcu_uni_add_beacon_offload(struct mt792x_dev *dev,
 		},
 	};
 	struct sk_buff *skb;
+
+	if (dev->fw_legacy)
+		return mt7921_mcu_ce_beacon(dev, hw, vif, enable);
 
 	/* support enable/update process only
 	 * disable flow would be handled in bss stop handler automatically

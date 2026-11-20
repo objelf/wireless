@@ -130,6 +130,7 @@ enum {
 	MCU_CE_CMD_UPDATE_STA_REC = 0x13,
 	MCU_CE_CMD_REMOVE_STA_REC = 0x14,
 	MCU_CE_CMD_SET_BSS_CREATED = 0x15,
+	MCU_CE_CMD_UPDATE_BEACON = 0x18,
 	MCU_CE_CMD_SET_BSS_RLM = 0x19,
 	MCU_CE_CMD_SET_MONITOR = 0xfc,
 };
@@ -220,6 +221,9 @@ enum {
 
 #define MT7921_CE_CH_REQ		0
 #define MT7921_CE_CH_ABORT		1
+
+#define MT7921_CE_BCN_UPDATE_ALL	1
+#define MT7921_CE_BCN_DELETE_ALL	2
 
 struct mt7921_ce_basic_config {
 	u8 native_80211;
@@ -446,6 +450,15 @@ struct mt7921_ce_bss_created {
 	__le16 bcn_interval;
 	__le16 atim_window;
 	u8 rsv[2];
+} __packed;
+
+struct mt7921_ce_beacon {
+	u8 method;
+	u8 bss_idx;
+	u8 rsv[2];
+	__le16 capability;
+	__le16 ie_len;
+	u8 ie[];
 } __packed;
 
 struct mt7921_ce_monitor {
