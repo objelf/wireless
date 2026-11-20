@@ -1034,8 +1034,14 @@ mt792x_get_mac80211_ops(struct device *dev,
 	if (mt792x_needs_cnm_runtime(drv_data))
 		*fw_features |= MT792x_FW_CAP_CNM;
 
-	if (legacy && *legacy)
+	/* The legacy firmware owns the channel through channel privilege
+	 * requests, which is what the channel context ops are built on, and
+	 * it reports none of the linux-firmware feature bits.
+	 */
+	if (legacy && *legacy) {
 		dev_info(dev, "legacy firmware detected\n");
+		*fw_features = MT792x_FW_CAP_CNM;
+	}
 
 	if (!(*fw_features & MT792x_FW_CAP_CNM)) {
 		ops->remain_on_channel = NULL;

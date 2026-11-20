@@ -688,6 +688,46 @@ int mt7921_mcu_ce_default_key(struct mt792x_dev *dev,
 				 &req, sizeof(req), false);
 }
 
+static int
+mt7921_mcu_ce_set_roc(struct mt792x_phy *phy, struct mt792x_vif *vif,
+		      struct ieee80211_channel *chan, int duration,
+		      enum mt7921_roc_req type, u8 token_id)
+{
+	struct mt7921_ce_ch_privilege req = {
+		.bss_idx = vif->bss_conf.mt76.idx,
+		.token_id = token_id,
+		.action = MT7921_CE_CH_REQ,
+		.primary_chan = chan->hw_value,
+		.sco = MT7921_CE_SCO_NONE,
+		.band = mt7921_mcu_ce_band(chan->band),
+		.width = MT7921_CE_CW_20_40MHZ,
+		.center_chan = chan->hw_value,
+		.req_type = type,
+		.dbdc_band = MT7921_CE_DBDC_BAND_AUTO,
+		.max_interval = cpu_to_le32(duration),
+	};
+
+	BUILD_BUG_ON(sizeof(req) != 24);
+
+	return mt76_mcu_send_msg(&phy->dev->mt76, MCU_CE_CMD(SET_ROC),
+				 &req, sizeof(req), false);
+}
+
+static int
+mt7921_mcu_ce_abort_roc(struct mt792x_phy *phy, struct mt792x_vif *vif,
+			u8 token_id)
+{
+	struct mt7921_ce_ch_privilege req = {
+		.bss_idx = vif->bss_conf.mt76.idx,
+		.token_id = token_id,
+		.action = MT7921_CE_CH_ABORT,
+		.dbdc_band = MT7921_CE_DBDC_BAND_AUTO,
+	};
+
+	return mt76_mcu_send_msg(&phy->dev->mt76, MCU_CE_CMD(SET_ROC),
+				 &req, sizeof(req), false);
+}
+
 int mt7921_mcu_ce_bss_created(struct mt792x_dev *dev,
 			      struct ieee80211_vif *vif)
 {
@@ -779,6 +819,47 @@ int mt7921_mcu_update_arp_filter(struct mt792x_dev *dev,
 
 	return mt76_connac_mcu_update_arp_filter(&dev->mt76,
 						 &mvif->bss_conf.mt76, info);
+}
+
+static void
+mt7921_mcu_ce_roc_event(struct mt792x_dev *dev, struct sk_buff *skb)
+{
+	struct mt7921_ce_ch_privilege *grant;
+
+	if (skb->len < sizeof(struct mt76_connac2_mcu_rxd) + sizeof(*grant))
+		return;
+
+	grant = (struct mt7921_ce_ch_privilege *)
+		(skb->data + sizeof(struct mt76_connac2_mcu_rxd));
+
+	if (grant->req_type == MT7921_ROC_REQ_ROC)
+		ieee80211_ready_on_channel(dev->mt76.phy.hw);
+
+	dev->phy.roc_grant = true;
+	wake_up(&dev->phy.roc_wait);
+	mod_timer(&dev->phy.roc_timer,
+		  jiffies + msecs_to_jiffies(le32_to_cpu(grant->max_interval)));
+}
+
+/* Events only the legacy firmware sends. Returns true once consumed. */
+static bool
+mt7921_mcu_ce_rx_event(struct mt792x_dev *dev, struct sk_buff *skb)
+{
+	struct mt76_connac2_mcu_rxd *rxd;
+
+	rxd = (struct mt76_connac2_mcu_rxd *)skb->data;
+	if (rxd->eid != MCU_CE_EVENT_CH_PRIVILEGE)
+		return false;
+
+	spin_lock_bh(&dev->mcu_event_lock);
+	if (!dev->mcu_events_stopped &&
+	    !test_bit(MT76_REMOVED, &dev->mphy.state))
+		mt7921_mcu_ce_roc_event(dev, skb);
+	spin_unlock_bh(&dev->mcu_event_lock);
+
+	dev_kfree_skb(skb);
+
+	return true;
 }
 
 #ifdef CONFIG_PM
@@ -1063,7 +1144,10 @@ void mt7921_mcu_rx_event(struct mt792x_dev *dev, struct sk_buff *skb)
 
 	rxd = (struct mt76_connac2_mcu_rxd *)skb->data;
 
-	if (rxd->option & MCU_UNI_CMD_UNSOLICITED_EVENT) {
+	if (dev->fw_legacy) {
+		if (mt7921_mcu_ce_rx_event(dev, skb))
+			return;
+	} else if (rxd->option & MCU_UNI_CMD_UNSOLICITED_EVENT) {
 		mt7921_mcu_uni_rx_unsolicited_event(dev, skb);
 		return;
 	}
@@ -1554,6 +1638,10 @@ int mt7921_mcu_set_roc(struct mt792x_phy *phy, struct mt792x_vif *vif,
 		},
 	};
 
+	if (dev->fw_legacy)
+		return mt7921_mcu_ce_set_roc(phy, vif, chan, duration, type,
+					     token_id);
+
 	if (chan->hw_value < center_ch)
 		req.roc.sco = 1; /* SCA */
 	else if (chan->hw_value > center_ch)
@@ -1600,6 +1688,9 @@ int mt7921_mcu_abort_roc(struct mt792x_phy *phy, struct mt792x_vif *vif,
 			.dbdcband = 0xff, /* auto*/
 		},
 	};
+
+	if (dev->fw_legacy)
+		return mt7921_mcu_ce_abort_roc(phy, vif, token_id);
 
 	return mt76_mcu_send_msg(&dev->mt76, MCU_UNI_CMD(ROC),
 				 &req, sizeof(req), false);

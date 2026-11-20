@@ -133,6 +133,10 @@ enum {
 	MCU_CE_CMD_SET_BSS_RLM = 0x19,
 };
 
+enum {
+	MCU_CE_EVENT_CH_PRIVILEGE = 0x10,
+};
+
 #define MT7921_CE_NETWORK_AIS		0
 #define MT7921_CE_NETWORK_P2P		1
 
@@ -209,6 +213,9 @@ enum {
 #define MT7921_CE_BA_SIZE		64
 #define MT7921_CE_BA_SIZE_HE		256
 #define MT7921_CE_MAX_AMSDU_LEN		11454
+
+#define MT7921_CE_CH_REQ		0
+#define MT7921_CE_CH_ABORT		1
 
 struct mt7921_ce_basic_config {
 	u8 native_80211;
@@ -403,6 +410,24 @@ struct mt7921_ce_default_key {
 	u8 key_id;
 	u8 unicast;
 	u8 multicast;
+} __packed;
+
+/* request and grant event share one layout */
+struct mt7921_ce_ch_privilege {
+	u8 bss_idx;
+	u8 token_id;
+	u8 action; /* status in the event */
+	u8 primary_chan;
+	u8 sco;
+	u8 band;
+	u8 width;
+	u8 center_chan;
+	u8 center_chan2;
+	u8 req_type;
+	u8 dbdc_band;
+	u8 rsv;
+	__le32 max_interval;
+	u8 rsv2[8];
 } __packed;
 
 struct mt7921_ce_bss_created {
