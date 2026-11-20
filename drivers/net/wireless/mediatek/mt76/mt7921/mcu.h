@@ -125,6 +125,7 @@ enum {
 	MCU_CE_CMD_BASIC_CONFIG = 0x02,
 	MCU_CE_CMD_ADD_REMOVE_KEY = 0x07,
 	MCU_CE_CMD_DEFAULT_KEY_ID = 0x08,
+	MCU_CE_CMD_SET_IP_ADDR = 0x10,
 	MCU_CE_CMD_BSS_ACTIVATE = 0x11,
 	MCU_CE_CMD_SET_BSS_INFO = 0x12,
 	MCU_CE_CMD_UPDATE_STA_REC = 0x13,
@@ -473,6 +474,17 @@ struct mt7921_ce_monitor {
 	__le16 aid;
 	u8 drop_fcs_err;
 	u8 rsv[5];
+} __packed;
+
+struct mt7921_ce_ip_addr {
+	u8 bss_idx;
+	u8 count;
+	u8 version;
+	u8 rsv[1];
+	struct {
+		u8 addr[4];
+		u8 mask[4];
+	} __packed ip[];
 } __packed;
 
 struct mt7921_ce_rx_addba {

@@ -856,6 +856,33 @@ int mt7921_mcu_ce_set_rxfilter(struct mt792x_dev *dev, unsigned int fif)
 				 &req, sizeof(req), false);
 }
 
+static int
+mt7921_mcu_ce_update_arp_filter(struct mt792x_dev *dev,
+				struct ieee80211_vif *vif)
+{
+	struct mt792x_vif *mvif = (struct mt792x_vif *)vif->drv_priv;
+	int i, len = min_t(int, vif->cfg.arp_addr_cnt,
+			   IEEE80211_BSS_ARP_ADDR_LIST_LEN);
+	struct mt7921_ce_ip_addr *req;
+	struct sk_buff *skb;
+
+	skb = mt76_mcu_msg_alloc(&dev->mt76, NULL,
+				 struct_size(req, ip, len));
+	if (!skb)
+		return -ENOMEM;
+
+	req = skb_put_zero(skb, struct_size(req, ip, len));
+	req->bss_idx = mvif->bss_conf.mt76.idx;
+	req->count = len;
+	req->version = 1;
+	for (i = 0; i < len; i++)
+		memcpy(req->ip[i].addr, &vif->cfg.arp_addr_list[i],
+		       sizeof(req->ip[i].addr));
+
+	return mt76_mcu_skb_send_msg(&dev->mt76, skb,
+				     MCU_CE_CMD(SET_IP_ADDR), false);
+}
+
 /* Entry points shared by both firmwares. With the linux-firmware image each
  * of them makes the very call the driver made before.
  */
@@ -930,6 +957,9 @@ int mt7921_mcu_update_arp_filter(struct mt792x_dev *dev,
 				 struct ieee80211_bss_conf *info)
 {
 	struct mt792x_vif *mvif = (struct mt792x_vif *)vif->drv_priv;
+
+	if (dev->fw_legacy)
+		return mt7921_mcu_ce_update_arp_filter(dev, vif);
 
 	return mt76_connac_mcu_update_arp_filter(&dev->mt76,
 						 &mvif->bss_conf.mt76, info);
