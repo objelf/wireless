@@ -772,15 +772,11 @@ mt7921_mcu_ce_beacon(struct mt792x_dev *dev, struct ieee80211_hw *hw,
 	int hdr_len, tim_end;
 	u8 *tim;
 
-	if (!enable) {
-		struct mt7921_ce_beacon del = {
-			.method = MT7921_CE_BCN_DELETE_ALL,
-			.bss_idx = mvif->bss_conf.mt76.idx,
-		};
-
-		return mt76_mcu_send_msg(&dev->mt76, MCU_CE_CMD(UPDATE_BEACON),
-					 &del, sizeof(del), false);
-	}
+	/* the firmware stops beaconing when the BSS is aborted, there is
+	 * nothing to delete for an AP
+	 */
+	if (!enable)
+		return 0;
 
 	bcn = ieee80211_beacon_get_template(hw, vif, &offs, 0);
 	if (!bcn)
