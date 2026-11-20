@@ -123,6 +123,21 @@ static int mt7921_mcu_read_eeprom(struct mt792x_dev *dev, u32 offset, u8 *val)
 	return 0;
 }
 
+/* MT7921 legacy firmware: BSS, station, key and channel handling go through
+ * the legacy command set, and block ack sessions are negotiated by the
+ * firmware. Nothing below is reached with the linux-firmware image.
+ */
+static int mt7921_mcu_ce_basic_config(struct mt792x_dev *dev)
+{
+	struct mt7921_ce_basic_config req = {
+		/* IP, UDP and TCP: the driver advertises NETIF_F_RXCSUM */
+		.rx_csum = cpu_to_le16(GENMASK(2, 0)),
+	};
+
+	return mt76_mcu_send_msg(&dev->mt76, MCU_CE_CMD(BASIC_CONFIG),
+				 &req, sizeof(req), false);
+}
+
 /* Entry points shared by both firmwares. With the linux-firmware image each
  * of them makes the very call the driver made before.
  */
@@ -740,6 +755,9 @@ static int mt7921_mcu_get_nic_capability(struct mt792x_phy *mphy)
 							     skb, len);
 			break;
 		case MT_NIC_CAP_CHIP_CAP:
+			/* the legacy firmware uses this tag for something else */
+			if (mphy->dev->fw_legacy)
+				break;
 			if (len >= sizeof(u64))
 				memcpy(&mphy->chip_cap, (void *)skb->data,
 				       sizeof(u64));
@@ -780,6 +798,16 @@ int mt7921_run_firmware(struct mt792x_dev *dev)
 	if (err)
 		return err;
 
+	if (dev->fw_legacy) {
+		set_bit(MT76_STATE_MCU_RUNNING, &dev->mphy.state);
+
+		err = mt7921_mcu_ce_basic_config(dev);
+		if (err)
+			return err;
+
+		return mt7921_mcu_fw_log_2_host(dev, 1);
+	}
+
 	err = mt7921_load_clc(dev, mt792x_ram_name(dev));
 	if (err)
 		return err;
@@ -801,6 +829,9 @@ int mt7921_mcu_radio_led_ctrl(struct mt792x_dev *dev, u8 value)
 	} __packed req = {
 		.ctrlid = value,
 	};
+
+	if (dev->fw_legacy)
+		return 0;
 
 	return mt76_mcu_send_msg(&dev->mt76, MCU_EXT_CMD(ID_RADIO_ON_OFF_CTRL),
 				&req, sizeof(req), false);
@@ -1556,6 +1587,10 @@ int mt7921_mcu_set_clc(struct mt792x_dev *dev, u8 *alpha2,
 	struct mt792x_phy *phy = (struct mt792x_phy *)&dev->phy;
 	int i, ret;
 
+	/* the legacy firmware has no CLC command */
+	if (dev->fw_legacy)
+		return 0;
+
 	/* submit all clc config */
 	for (i = 0; i < ARRAY_SIZE(phy->clc); i++) {
 		if (i == MT792x_CLC_REGD)
@@ -1587,6 +1622,9 @@ int mt7921_mcu_get_temperature(struct mt792x_phy *phy)
 		.ctrl_id = THERMAL_SENSOR_TEMP_QUERY,
 		.band_idx = phy->mt76->band_idx,
 	};
+
+	if (dev->fw_legacy)
+		return -EOPNOTSUPP;
 
 	return mt76_mcu_send_msg(&dev->mt76, MCU_EXT_CMD(THERMAL_CTRL), &req,
 				 sizeof(req), true);

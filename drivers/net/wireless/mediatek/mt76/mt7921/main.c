@@ -227,19 +227,27 @@ void mt7921_set_stream_he_caps(struct mt792x_phy *phy)
 int __mt7921_start(struct mt792x_phy *phy)
 {
 	struct mt76_phy *mphy = phy->mt76;
+	bool legacy = phy->dev->fw_legacy;
 	int err;
 
-	err = mt76_connac_mcu_set_mac_enable(mphy->dev, 0, true, false);
-	if (err)
-		return err;
+	/* MAC enable and RX path are not part of the legacy command set */
+	if (!legacy) {
+		err = mt76_connac_mcu_set_mac_enable(mphy->dev, 0, true,
+						     false);
+		if (err)
+			return err;
+	}
 
 	err = mt76_connac_mcu_set_channel_domain(mphy);
 	if (err)
 		return err;
 
-	err = mt7921_mcu_set_chan_info(phy, MCU_EXT_CMD(SET_RX_PATH));
-	if (err)
-		return err;
+	if (!legacy) {
+		err = mt7921_mcu_set_chan_info(phy,
+					       MCU_EXT_CMD(SET_RX_PATH));
+		if (err)
+			return err;
+	}
 
 	err = mt7921_set_tx_sar_pwr(mphy->hw, NULL);
 	if (err)
@@ -924,6 +932,10 @@ static int mt7921_set_rts_threshold(struct ieee80211_hw *hw, int radio_idx,
 				    u32 val)
 {
 	struct mt792x_dev *dev = mt792x_hw_dev(hw);
+
+	/* no protection control command in the legacy command set */
+	if (dev->fw_legacy)
+		return 0;
 
 	mt792x_mutex_acquire(dev);
 	mt76_connac_mcu_set_rts_thresh(&dev->mt76, val, 0);

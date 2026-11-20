@@ -117,4 +117,22 @@ struct mt7921_clc_info_tlv {
 		       */
 	u8 rsv[63];
 } __packed;
+
+/* Command set of the MT7921 legacy firmware. Values and layouts follow what
+ * that firmware expects, every field is little endian.
+ */
+enum {
+	MCU_CE_CMD_BASIC_CONFIG = 0x02,
+};
+
+struct mt7921_ce_basic_config {
+	u8 native_80211;
+	u8 assert_path;
+	u8 debug_level;
+	u8 rsv[1];
+	__le16 rx_csum; /* bit0: IP, bit1: UDP, bit2: TCP */
+	__le16 tx_csum;
+	u8 segment;
+	u8 rsv2[3];
+} __packed;
 #endif

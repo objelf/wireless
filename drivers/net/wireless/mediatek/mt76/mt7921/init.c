@@ -77,6 +77,10 @@ int mt7921_mac_init(struct mt792x_dev *dev)
 	for (i = 0; i < 2; i++)
 		mt792x_mac_init_band(dev, i);
 
+	/* no protection control command in the legacy command set */
+	if (dev->fw_legacy)
+		return 0;
+
 	return mt76_connac_mcu_set_rts_thresh(&dev->mt76, 0x92b, 0);
 }
 EXPORT_SYMBOL_GPL(mt7921_mac_init);
