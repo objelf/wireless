@@ -1295,6 +1295,8 @@ static int mt7921_resume(struct ieee80211_hw *hw)
 	set_bit(MT76_STATE_RUNNING, &phy->mt76->state);
 	ieee80211_iterate_active_interfaces_mtx(hw,
 						IEEE80211_IFACE_ITER_RESUME_ALL,
+						dev->fw_legacy ?
+						mt7921_mcu_set_suspend_iter :
 						mt76_connac_mcu_set_suspend_iter,
 						&dev->mphy);
 

@@ -856,6 +856,99 @@ int mt7921_mcu_ce_set_rxfilter(struct mt792x_dev *dev, unsigned int fif)
 				 &req, sizeof(req), false);
 }
 
+#ifdef CONFIG_PM
+static u8 mt7921_mcu_ce_wakeup_hif(struct mt792x_dev *dev)
+{
+	if (mt76_is_usb(&dev->mt76))
+		return MT7921_CE_HIF_WAKEUP_USB;
+	if (mt76_is_sdio(&dev->mt76))
+		return MT7921_CE_HIF_WAKEUP_SDIO;
+
+	return MT7921_CE_HIF_WAKEUP_PCIE;
+}
+
+static int mt7921_mcu_ce_set_hif_suspend(struct mt792x_dev *dev, bool suspend)
+{
+	struct mt7921_ce_hif_ctrl req = {
+		.hif_type = MT7921_CE_HIF_PCIE,
+		.direction = MT7921_CE_HIF_DIR_TX,
+		.stop = suspend,
+		.suspend = suspend,
+		.wakeup_hif = cpu_to_le32(mt7921_mcu_ce_wakeup_hif(dev)),
+	};
+
+	if (mt76_is_usb(&dev->mt76))
+		req.hif_type = MT7921_CE_HIF_USB;
+	else if (mt76_is_sdio(&dev->mt76))
+		req.hif_type = MT7921_CE_HIF_SDIO;
+
+	return mt76_mcu_send_msg(&dev->mt76, MCU_CE_CMD(HIF_CTRL),
+				 &req, sizeof(req), false);
+}
+
+static void
+mt7921_mcu_ce_set_suspend(struct mt76_phy *phy, struct ieee80211_vif *vif)
+{
+	struct mt792x_dev *dev = container_of(phy->dev, struct mt792x_dev, mt76);
+	struct mt792x_vif *mvif = (struct mt792x_vif *)vif->drv_priv;
+	struct cfg80211_wowlan *wowlan = phy->hw->wiphy->wowlan_config;
+	bool suspend = !test_bit(MT76_STATE_RUNNING, &phy->state);
+	struct mt7921_ce_suspend_mode mode = {
+		.bss_idx = mvif->bss_conf.mt76.idx,
+		.enable = suspend,
+		.mdtim = 1,
+		.wow_suspend = 1,
+	};
+	struct mt7921_ce_wowlan wow = {
+		.cmd = suspend ? MT7921_CE_WOW_START : MT7921_CE_WOW_STOP,
+	};
+
+	if (vif->type != NL80211_IFTYPE_STATION)
+		return;
+
+	mt76_mcu_send_msg(phy->dev, MCU_CE_CMD(SET_SUSPEND_MODE),
+			  &mode, sizeof(mode), false);
+
+	if (suspend && wowlan) {
+		if (wowlan->magic_pkt)
+			wow.detect_type |= MT7921_CE_WOW_DETECT_MAGIC;
+		if (wowlan->disconnect)
+			wow.detect_type |= MT7921_CE_WOW_DETECT_DISCONNECT |
+					   MT7921_CE_WOW_DETECT_BCN_LOST;
+		if (wowlan->gtk_rekey_failure)
+			wow.detect_type |= MT7921_CE_WOW_DETECT_GTK_FAIL;
+		if (wowlan->any)
+			wow.detect_type |= MT7921_CE_WOW_DETECT_ANY;
+	}
+	wow.wake_hif[0].wakeup_hif = mt7921_mcu_ce_wakeup_hif(dev);
+
+	mt76_mcu_send_msg(phy->dev, MCU_CE_CMD(SET_WOWLAN),
+			  &wow, sizeof(wow), false);
+}
+
+static int
+mt7921_mcu_ce_update_gtk_rekey(struct mt792x_dev *dev,
+			       struct ieee80211_vif *vif,
+			       struct cfg80211_gtk_rekey_data *key)
+{
+	struct mt792x_vif *mvif = (struct mt792x_vif *)vif->drv_priv;
+	struct mt7921_ce_gtk_rekey req = {
+		.bss_idx = mvif->bss_conf.mt76.idx,
+		.mode = MT7921_CE_GTK_REKEY_ON,
+	};
+
+	if (key->kek_len > sizeof(req.kek) || key->kck_len > sizeof(req.kck))
+		return -EOPNOTSUPP;
+
+	memcpy(req.kek, key->kek, key->kek_len);
+	memcpy(req.kck, key->kck, key->kck_len);
+	memcpy(req.replay_ctr, key->replay_ctr, sizeof(req.replay_ctr));
+
+	return mt76_mcu_send_msg(&dev->mt76, MCU_CE_CMD(SET_GTK_REKEY),
+				 &req, sizeof(req), false);
+}
+#endif /* CONFIG_PM */
+
 static int
 mt7921_mcu_ce_update_arp_filter(struct mt792x_dev *dev,
 				struct ieee80211_vif *vif)
@@ -940,6 +1033,9 @@ int mt7921_mcu_add_key(struct mt792x_dev *dev, struct ieee80211_vif *vif,
 #ifdef CONFIG_PM
 int mt7921_mcu_set_hif_suspend(struct mt792x_dev *dev, bool suspend)
 {
+	if (dev->fw_legacy)
+		return mt7921_mcu_ce_set_hif_suspend(dev, suspend);
+
 	return mt76_connac_mcu_set_hif_suspend(&dev->mt76, suspend, true);
 }
 EXPORT_SYMBOL_GPL(mt7921_mcu_set_hif_suspend);
@@ -948,6 +1044,11 @@ int mt7921_mcu_update_gtk_rekey(struct ieee80211_hw *hw,
 				struct ieee80211_vif *vif,
 				struct cfg80211_gtk_rekey_data *key)
 {
+	struct mt792x_dev *dev = mt792x_hw_dev(hw);
+
+	if (dev->fw_legacy)
+		return mt7921_mcu_ce_update_gtk_rekey(dev, vif, key);
+
 	return mt76_connac_mcu_update_gtk_rekey(hw, vif, key);
 }
 #endif /* CONFIG_PM */
@@ -1165,6 +1266,15 @@ mt7921_mcu_set_ipv6_ns_filter(struct mt76_dev *dev,
 
 void mt7921_mcu_set_suspend_iter(void *priv, u8 *mac, struct ieee80211_vif *vif)
 {
+	struct mt76_phy *mphy = priv;
+	struct mt792x_dev *dev = container_of(mphy->dev, struct mt792x_dev,
+					      mt76);
+
+	if (dev->fw_legacy) {
+		mt7921_mcu_ce_set_suspend(mphy, vif);
+		return;
+	}
+
 	if (IS_ENABLED(CONFIG_IPV6)) {
 		struct mt76_phy *phy = priv;
 

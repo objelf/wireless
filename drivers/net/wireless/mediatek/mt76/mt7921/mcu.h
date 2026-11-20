@@ -133,6 +133,10 @@ enum {
 	MCU_CE_CMD_SET_BSS_CREATED = 0x15,
 	MCU_CE_CMD_UPDATE_BEACON = 0x18,
 	MCU_CE_CMD_SET_BSS_RLM = 0x19,
+	MCU_CE_CMD_SET_GTK_REKEY = 0x3d,
+	MCU_CE_CMD_SET_WOWLAN = 0x4a,
+	MCU_CE_CMD_SET_SUSPEND_MODE = 0x58,
+	MCU_CE_CMD_HIF_CTRL = 0xf6,
 	MCU_CE_CMD_SET_MONITOR = 0xfc,
 };
 
@@ -225,6 +229,27 @@ enum {
 
 #define MT7921_CE_BCN_UPDATE_ALL	1
 #define MT7921_CE_BCN_DELETE_ALL	2
+
+#define MT7921_CE_HIF_SDIO		0
+#define MT7921_CE_HIF_USB		1
+#define MT7921_CE_HIF_PCIE		2
+#define MT7921_CE_HIF_DIR_TX		1
+
+#define MT7921_CE_HIF_WAKEUP_PCIE	0
+#define MT7921_CE_HIF_WAKEUP_USB	1
+#define MT7921_CE_HIF_WAKEUP_SDIO	3
+
+#define MT7921_CE_WOW_START		1
+#define MT7921_CE_WOW_STOP		2
+#define MT7921_CE_WOW_DETECT_MAGIC	BIT(0)
+#define MT7921_CE_WOW_DETECT_ANY	BIT(1)
+#define MT7921_CE_WOW_DETECT_DISCONNECT	BIT(2)
+#define MT7921_CE_WOW_DETECT_GTK_FAIL	BIT(3)
+#define MT7921_CE_WOW_DETECT_BCN_LOST	BIT(4)
+#define MT7921_CE_WOW_MAX_PORT		20
+
+#define MT7921_CE_GTK_REKEY_ON		0
+#define MT7921_CE_GTK_REKEY_OFF		1
 
 struct mt7921_ce_basic_config {
 	u8 native_80211;
@@ -474,6 +499,70 @@ struct mt7921_ce_monitor {
 	__le16 aid;
 	u8 drop_fcs_err;
 	u8 rsv[5];
+} __packed;
+
+struct mt7921_ce_hif_ctrl {
+	u8 hif_type;
+	u8 direction;
+	u8 stop;
+	u8 suspend;
+	__le32 wakeup_hif;
+	__le32 gpio;
+	__le32 gpio_timer;
+	__le32 param;
+	u8 rsv[16];
+} __packed;
+
+struct mt7921_ce_suspend_mode {
+	u8 bss_idx;
+	u8 enable;
+	u8 mdtim;
+	u8 wow_suspend;
+	u8 rsv[64];
+} __packed;
+
+struct mt7921_ce_wowlan {
+	u8 cmd;
+	u8 detect_type;
+	__le16 filter_flag;
+	u8 scenario;
+	u8 block_count;
+	u8 rsv[2];
+	struct {
+		u8 wakeup_hif;
+		u8 gpio_pin;
+		u8 trigger_lvl;
+		u8 rsv[1];
+		__le32 gpio_interval;
+		u8 rsv2[4];
+	} __packed wake_hif[2];
+	struct {
+		u8 ipv4_udp_cnt;
+		u8 ipv4_tcp_cnt;
+		u8 ipv6_udp_cnt;
+		u8 ipv6_tcp_cnt;
+		__le16 ipv4_udp[MT7921_CE_WOW_MAX_PORT];
+		__le16 ipv4_tcp[MT7921_CE_WOW_MAX_PORT];
+		__le16 ipv6_udp[MT7921_CE_WOW_MAX_PORT];
+		__le16 ipv6_tcp[MT7921_CE_WOW_MAX_PORT];
+	} __packed port;
+	__le16 detect_type_ext;
+	u8 rsv2[30];
+} __packed;
+
+struct mt7921_ce_gtk_rekey {
+	u8 kek[NL80211_KEK_LEN];
+	u8 kck[NL80211_KCK_LEN];
+	u8 replay_ctr[NL80211_REPLAY_CTR_LEN];
+	u8 bss_idx;
+	u8 mode;
+	u8 key_id;
+	u8 rsv;
+	__le32 proto;
+	__le32 pairwise_cipher;
+	__le32 group_cipher;
+	__le32 key_mgmt;
+	__le32 mgmt_group_cipher;
 } __packed;
 
 struct mt7921_ce_ip_addr {
