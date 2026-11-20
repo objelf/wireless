@@ -329,6 +329,7 @@ static int mt7921_pci_probe(struct pci_dev *pdev,
 	void __iomem *regs;
 	u16 cmd, chipid;
 	u8 features;
+	bool legacy;
 	int ret;
 
 	ret = pcim_enable_device(pdev);
@@ -354,7 +355,8 @@ static int mt7921_pci_probe(struct pci_dev *pdev,
 		mt76_pci_disable_aspm(pdev);
 
 	ops = mt792x_get_mac80211_ops(&pdev->dev, &mt7921_ops,
-				      (void *)id->driver_data, &features);
+				      (void *)id->driver_data, &features,
+				      &legacy);
 	if (!ops) {
 		ret = -ENOMEM;
 		goto err_free_pci_vec;
@@ -377,6 +379,7 @@ static int mt7921_pci_probe(struct pci_dev *pdev,
 	}
 
 	dev->fw_features = features;
+	dev->fw_legacy = legacy;
 	dev->hif_ops = &mt7921_pcie_ops;
 	dev->pcie_reg = &mt7921_pcie_reg;
 	dev->irq_map = &irq_map;

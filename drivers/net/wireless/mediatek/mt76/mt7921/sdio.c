@@ -131,10 +131,12 @@ static int mt7921s_probe(struct sdio_func *func,
 	struct mt792x_dev *dev;
 	struct mt76_dev *mdev;
 	u8 features;
+	bool legacy;
 	int ret;
 
 	ops = mt792x_get_mac80211_ops(&func->dev, &mt7921_ops,
-				      (void *)id->driver_data, &features);
+				      (void *)id->driver_data, &features,
+				      &legacy);
 	if (!ops)
 		return -ENOMEM;
 
@@ -144,6 +146,7 @@ static int mt7921s_probe(struct sdio_func *func,
 
 	dev = container_of(mdev, struct mt792x_dev, mt76);
 	dev->fw_features = features;
+	dev->fw_legacy = legacy;
 	dev->hif_ops = &mt7921_sdio_ops;
 	sdio_set_drvdata(func, dev);
 

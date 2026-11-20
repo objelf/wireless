@@ -187,10 +187,12 @@ static int mt7921u_probe(struct usb_interface *usb_intf,
 	struct mt792x_dev *dev;
 	struct mt76_dev *mdev;
 	u8 features;
+	bool legacy;
 	int ret;
 
 	ops = mt792x_get_mac80211_ops(&usb_intf->dev, &mt7921_ops,
-				      (void *)id->driver_info, &features);
+				      (void *)id->driver_info, &features,
+				      &legacy);
 	if (!ops)
 		return -ENOMEM;
 
@@ -201,6 +203,7 @@ static int mt7921u_probe(struct usb_interface *usb_intf,
 
 	dev = container_of(mdev, struct mt792x_dev, mt76);
 	dev->fw_features = features;
+	dev->fw_legacy = legacy;
 	dev->hif_ops = &hif_ops;
 	atomic_set(&dev->mt76.bus_hung, false);
 	mt792xu_reset_work_init(dev);

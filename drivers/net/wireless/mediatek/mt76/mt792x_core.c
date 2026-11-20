@@ -887,13 +887,50 @@ int mt792x_init_wiphy(struct ieee80211_hw *hw)
 }
 EXPORT_SYMBOL_GPL(mt792x_init_wiphy);
 
+/* MT7921 is served by two firmwares that share one file name: the one in
+ * linux-firmware and the reference design one, called the legacy firmware
+ * here, which only takes the legacy command set. Tell them apart from what
+ * the image carries.
+ *
+ * Every linux-firmware build since 20220908 has a feature tag in its release
+ * info, older ones do not. An image built after that date without the tag is
+ * taken as the legacy firmware.
+ *
+ * NOTE: the legacy firmware half of this rule is an assumption that has not
+ * been checked against such an image yet. legacy_fw overrides it.
+ */
+#define MT792x_FW_FEATURE_TAG_DATE	"20220908"
+
+static int mt792x_legacy_fw = -1;
+module_param_named(legacy_fw, mt792x_legacy_fw, int, 0444);
+MODULE_PARM_DESC(legacy_fw,
+		 "MT7921 legacy firmware flow (-1: detect, 0: never, 1: always)");
+
+static bool
+mt792x_fw_is_legacy(const char *fw_wm,
+		    const struct mt76_connac2_fw_trailer *hdr,
+		    bool feature_tag)
+{
+	if (strcmp(fw_wm, MT7921_FIRMWARE_WM))
+		return false;
+
+	if (mt792x_legacy_fw >= 0)
+		return mt792x_legacy_fw;
+
+	return !feature_tag &&
+	       strncmp(hdr->build_date, MT792x_FW_FEATURE_TAG_DATE,
+		       sizeof(MT792x_FW_FEATURE_TAG_DATE) - 1) >= 0;
+}
+
 static int
-mt792x_get_offload_capability(struct device *dev, const char *fw_wm)
+mt792x_get_offload_capability(struct device *dev, const char *fw_wm,
+			      bool *legacy)
 {
 	const struct mt76_connac2_fw_trailer *hdr;
 	struct mt792x_realease_info *rel_info;
 	const u8 *data, *end, *fw_end;
 	const struct firmware *fw;
+	bool feature_tag = false;
 	u8 offload_caps = 0;
 	size_t offset;
 	int ret;
@@ -941,11 +978,15 @@ mt792x_get_offload_capability(struct device *dev, const char *fw_wm)
 
 			features = (struct mt792x_fw_features *)data;
 			offload_caps = features->data;
+			feature_tag = true;
 			break;
 		}
 
 		data += len + rel_info->pad_len;
 	}
+
+	if (legacy)
+		*legacy = mt792x_fw_is_legacy(fw_wm, hdr, feature_tag);
 
 	goto out;
 
@@ -967,7 +1008,7 @@ static bool mt792x_needs_cnm_runtime(const void *drv_data)
 struct ieee80211_ops *
 mt792x_get_mac80211_ops(struct device *dev,
 			const struct ieee80211_ops *mac80211_ops,
-			void *drv_data, u8 *fw_features)
+			void *drv_data, u8 *fw_features, bool *legacy)
 {
 	struct ieee80211_ops *ops;
 	int ret;
@@ -977,7 +1018,10 @@ mt792x_get_mac80211_ops(struct device *dev,
 	if (!ops)
 		return NULL;
 
-	ret = mt792x_get_offload_capability(dev, drv_data);
+	if (legacy)
+		*legacy = false;
+
+	ret = mt792x_get_offload_capability(dev, drv_data, legacy);
 	if (ret < 0) {
 		dev_warn(dev, "failed to read firmware offload caps: %d\n", ret);
 		*fw_features = 0;
@@ -987,6 +1031,9 @@ mt792x_get_mac80211_ops(struct device *dev,
 
 	if (mt792x_needs_cnm_runtime(drv_data))
 		*fw_features |= MT792x_FW_CAP_CNM;
+
+	if (legacy && *legacy)
+		dev_info(dev, "legacy firmware detected\n");
 
 	if (!(*fw_features & MT792x_FW_CAP_CNM)) {
 		ops->remain_on_channel = NULL;
