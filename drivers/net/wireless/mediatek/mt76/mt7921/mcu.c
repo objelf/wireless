@@ -728,6 +728,23 @@ mt7921_mcu_ce_abort_roc(struct mt792x_phy *phy, struct mt792x_vif *vif,
 				 &req, sizeof(req), false);
 }
 
+static int
+mt7921_mcu_ce_bss_ps(struct mt792x_dev *dev, struct ieee80211_vif *vif)
+{
+	struct mt792x_vif *mvif = (struct mt792x_vif *)vif->drv_priv;
+	struct mt7921_ce_ps_profile req = {
+		.bss_idx = mvif->bss_conf.mt76.idx,
+		/* 0: stay awake, 2: fast power save */
+		.profile = vif->cfg.ps ? 2 : 0,
+	};
+
+	if (vif->type != NL80211_IFTYPE_STATION)
+		return -EOPNOTSUPP;
+
+	return mt76_mcu_send_msg(&dev->mt76, MCU_CE_CMD(SET_PS_PROFILE),
+				 &req, sizeof(req), false);
+}
+
 int mt7921_mcu_ce_bss_created(struct mt792x_dev *dev,
 			      struct ieee80211_vif *vif)
 {
@@ -1931,6 +1948,9 @@ int mt7921_mcu_uni_bss_ps(struct mt792x_dev *dev, struct ieee80211_vif *vif)
 		},
 	};
 
+	if (dev->fw_legacy)
+		return mt7921_mcu_ce_bss_ps(dev, vif);
+
 	if (vif->type != NL80211_IFTYPE_STATION)
 		return -EOPNOTSUPP;
 
@@ -2003,10 +2023,13 @@ mt7921_mcu_set_bss_pm(struct mt792x_dev *dev, struct ieee80211_vif *vif,
 	};
 	int err;
 
-	err = mt76_mcu_send_msg(&dev->mt76, MCU_CE_CMD(SET_BSS_ABORT),
-				&req_hdr, sizeof(req_hdr), false);
-	if (err < 0 || !enable)
-		return err;
+	/* the legacy firmware is told about the abort on disconnect only */
+	if (!dev->fw_legacy || !enable) {
+		err = mt76_mcu_send_msg(&dev->mt76, MCU_CE_CMD(SET_BSS_ABORT),
+					&req_hdr, sizeof(req_hdr), false);
+		if (err < 0 || !enable)
+			return err;
+	}
 
 	return mt76_mcu_send_msg(&dev->mt76, MCU_CE_CMD(SET_BSS_CONNECTED),
 				 &req, sizeof(req), false);
@@ -2050,7 +2073,10 @@ int mt7921_mcu_set_beacon_filter(struct mt792x_dev *dev,
 	int err;
 
 	if (enable) {
-		err = mt7921_mcu_uni_bss_bcnft(dev, vif, true);
+		if (dev->fw_legacy)
+			err = mt7921_mcu_set_bss_pm(dev, vif, true);
+		else
+			err = mt7921_mcu_uni_bss_bcnft(dev, vif, true);
 		if (err)
 			return err;
 

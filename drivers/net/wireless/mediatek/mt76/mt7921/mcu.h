@@ -433,6 +433,12 @@ struct mt7921_ce_ch_privilege {
 	u8 rsv2[8];
 } __packed;
 
+struct mt7921_ce_ps_profile {
+	u8 bss_idx;
+	u8 profile;
+	u8 rsv[2];
+} __packed;
+
 struct mt7921_ce_bss_created {
 	u8 bss_idx;
 	u8 dtim_period;
