@@ -1477,11 +1477,16 @@ mt7921_start_ap(struct ieee80211_hw *hw, struct ieee80211_vif *vif,
 	if (err)
 		goto out;
 
-	/* a BSS we own is "created" for the legacy firmware */
-	if (dev->fw_legacy)
-		err = mt7921_mcu_ce_bss_created(dev, vif);
-	else
+	/* a BSS we own is "created" for the legacy firmware, which wants
+	 * the beacon template by then
+	 */
+	if (dev->fw_legacy) {
+		err = mt7921_mcu_uni_add_beacon_offload(dev, hw, vif, true);
+		if (!err)
+			err = mt7921_mcu_ce_bss_created(dev, vif);
+	} else {
 		err = mt7921_mcu_set_bss_pm(dev, vif, true);
+	}
 	if (err)
 		goto out;
 

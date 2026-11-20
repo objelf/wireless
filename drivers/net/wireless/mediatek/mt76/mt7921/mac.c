@@ -637,11 +637,11 @@ mt7921_vif_connect_iter(void *priv, u8 *mac,
 
 	if (vif->type == NL80211_IFTYPE_AP) {
 		mt7921_mcu_add_bss(dev, vif, NULL, true, NULL);
-		if (dev->fw_legacy)
-			mt7921_mcu_ce_bss_created(dev, vif);
 		mt7921_mcu_sta_update(dev, NULL, vif, true,
 				      MT76_STA_INFO_STATE_NONE);
 		mt7921_mcu_uni_add_beacon_offload(dev, hw, vif, true);
+		if (dev->fw_legacy)
+			mt7921_mcu_ce_bss_created(dev, vif);
 	}
 }
 
