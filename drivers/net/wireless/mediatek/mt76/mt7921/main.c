@@ -365,6 +365,21 @@ out:
 	return ret;
 }
 
+static void
+mt7921_remove_interface(struct ieee80211_hw *hw, struct ieee80211_vif *vif)
+{
+	struct mt792x_dev *dev = mt792x_hw_dev(hw);
+
+	/* mt792x_remove_interface() leaves the legacy firmware alone */
+	if (dev->fw_legacy) {
+		mt792x_mutex_acquire(dev);
+		mt7921_mcu_add_dev(dev, vif, false);
+		mt792x_mutex_release(dev);
+	}
+
+	mt792x_remove_interface(hw, vif);
+}
+
 static void mt7921_roc_iter(void *priv, u8 *mac,
 			    struct ieee80211_vif *vif)
 {
@@ -736,6 +751,15 @@ static void mt7921_bss_info_changed(struct ieee80211_hw *hw,
 
 	if (changed & BSS_CHANGED_ARP_FILTER)
 		mt7921_mcu_update_arp_filter(dev, vif, info);
+
+	/* protection and width changes reach the legacy firmware through
+	 * the RLM parameters of a BSS that is up
+	 */
+	if (dev->fw_legacy && (vif->cfg.assoc || info->enable_beacon) &&
+	    (changed & (BSS_CHANGED_ERP_CTS_PROT | BSS_CHANGED_ERP_PREAMBLE |
+			BSS_CHANGED_ERP_SLOT | BSS_CHANGED_HT |
+			BSS_CHANGED_BANDWIDTH)))
+		mt7921_mcu_ce_bss_rlm(dev, vif, NULL);
 
 	mt792x_mutex_release(dev);
 }
@@ -1353,7 +1377,11 @@ mt7921_start_ap(struct ieee80211_hw *hw, struct ieee80211_vif *vif,
 	if (err)
 		goto out;
 
-	err = mt7921_mcu_set_bss_pm(dev, vif, true);
+	/* a BSS we own is "created" for the legacy firmware */
+	if (dev->fw_legacy)
+		err = mt7921_mcu_ce_bss_created(dev, vif);
+	else
+		err = mt7921_mcu_set_bss_pm(dev, vif, true);
 	if (err)
 		goto out;
 
@@ -1565,7 +1593,7 @@ const struct ieee80211_ops mt7921_ops = {
 	.start = mt7921_start,
 	.stop = mt7921_stop,
 	.add_interface = mt7921_add_interface,
-	.remove_interface = mt792x_remove_interface,
+	.remove_interface = mt7921_remove_interface,
 	.config = mt7921_config,
 	.conf_tx = mt792x_conf_tx,
 	.configure_filter = mt7921_configure_filter,

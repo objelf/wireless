@@ -123,7 +123,65 @@ struct mt7921_clc_info_tlv {
  */
 enum {
 	MCU_CE_CMD_BASIC_CONFIG = 0x02,
+	MCU_CE_CMD_BSS_ACTIVATE = 0x11,
+	MCU_CE_CMD_SET_BSS_INFO = 0x12,
+	MCU_CE_CMD_SET_BSS_CREATED = 0x15,
+	MCU_CE_CMD_SET_BSS_RLM = 0x19,
 };
+
+#define MT7921_CE_NETWORK_AIS		0
+#define MT7921_CE_NETWORK_P2P		1
+
+#define MT7921_CE_OP_MODE_INFRA		0
+#define MT7921_CE_OP_MODE_IBSS		1
+#define MT7921_CE_OP_MODE_AP		2
+#define MT7921_CE_OP_MODE_P2P_DEV	3
+
+#define MT7921_CE_MEDIA_CONNECTED	0
+#define MT7921_CE_MEDIA_DISCONNECTED	1
+
+#define MT7921_CE_STA_IDX_NONE		0xfe
+
+#define MT7921_CE_PHY_HR_DSSS		BIT(0)
+#define MT7921_CE_PHY_ERP		BIT(1)
+#define MT7921_CE_PHY_ERP_P2P		BIT(2)
+#define MT7921_CE_PHY_OFDM		BIT(3)
+#define MT7921_CE_PHY_HT		BIT(4)
+#define MT7921_CE_PHY_VHT		BIT(5)
+#define MT7921_CE_PHY_HE		BIT(6)
+
+/* index form of the above, for the non-HT basic PHY type */
+#define MT7921_CE_PHY_IDX_HR_DSSS	0
+#define MT7921_CE_PHY_IDX_ERP		1
+#define MT7921_CE_PHY_IDX_ERP_P2P	2
+#define MT7921_CE_PHY_IDX_OFDM		3
+
+#define MT7921_CE_RATE_CCK_1M		0x0000
+#define MT7921_CE_RATE_OFDM_6M		0x004b
+
+#define MT7921_CE_BAND_2G		1
+#define MT7921_CE_BAND_5G		2
+#define MT7921_CE_BAND_6G		3
+
+#define MT7921_CE_SCO_NONE		0
+#define MT7921_CE_SCO_ABOVE		1
+#define MT7921_CE_SCO_BELOW		3
+
+#define MT7921_CE_CW_20_40MHZ		0
+#define MT7921_CE_CW_80MHZ		1
+#define MT7921_CE_CW_160MHZ		2
+#define MT7921_CE_CW_80P80MHZ		3
+
+#define MT7921_CE_DBDC_BAND_AUTO	4
+
+#define MT7921_CE_AUTH_OPEN		0
+#define MT7921_CE_AUTH_WPA_PSK		4
+#define MT7921_CE_AUTH_WPA2_PSK		7
+
+#define MT7921_CE_ENC_WEP		0
+#define MT7921_CE_ENC_NONE		1
+#define MT7921_CE_ENC_TKIP		4
+#define MT7921_CE_ENC_AES		6
 
 struct mt7921_ce_basic_config {
 	u8 native_80211;
@@ -134,5 +192,86 @@ struct mt7921_ce_basic_config {
 	__le16 tx_csum;
 	u8 segment;
 	u8 rsv2[3];
+} __packed;
+
+struct mt7921_ce_bss_activate {
+	u8 bss_idx;
+	u8 active;
+	u8 network_type;
+	u8 omac_idx;
+	u8 addr[ETH_ALEN];
+	u8 bmc_wlan_idx;
+	u8 link_idx;
+} __packed;
+
+struct mt7921_ce_bss_rlm {
+	u8 bss_idx;
+	u8 band;
+	u8 primary_chan;
+	u8 sco;
+	u8 erp_protect;
+	u8 ht_protect;
+	u8 gf_mode;
+	u8 rifs_mode;
+	__le16 ht_op_info3;
+	__le16 ht_op_info2;
+	u8 ht_op_info1;
+	u8 short_preamble;
+	u8 short_slot;
+	u8 vht_width;
+	u8 vht_center_chan;
+	u8 vht_center_chan2;
+	__le16 vht_basic_mcs;
+	u8 tx_nss;
+	u8 rx_nss;
+} __packed;
+
+struct mt7921_ce_bss_info {
+	u8 bss_idx;
+	u8 conn_state;
+	u8 op_mode;
+	u8 ssid_len;
+	u8 ssid[IEEE80211_MAX_SSID_LEN];
+	u8 bssid[ETH_ALEN];
+	u8 qbss;
+	u8 version;
+	__le16 oper_rates;
+	__le16 basic_rates;
+	u8 ap_sta_idx;
+	u8 rsv[1];
+	__le16 fixed_rate;
+	u8 basic_phy_type;
+	u8 auth_mode;
+	u8 enc_status;
+	u8 phy_type;
+	u8 wapi;
+	u8 ap_mode;
+	u8 bmc_wlan_idx;
+	u8 hidden_ssid;
+	u8 disconnect_thresh;
+	u8 iot_ap_act;
+	u8 rsv2[2];
+	__le32 private_data;
+	struct mt7921_ce_bss_rlm rlm;
+	u8 dbdc_band;
+	u8 wmm_idx;
+	u8 dbdc_action;
+	u8 nss;
+	u8 rsv3[2];
+	u8 he_op_params[3];
+	u8 bss_color;
+	__le16 he_basic_mcs;
+	u8 max_bssid_indicator;
+	u8 mbssid_idx;
+	__le64 iot_ap_act_ext;
+	u8 rsv4[8];
+} __packed;
+
+struct mt7921_ce_bss_created {
+	u8 bss_idx;
+	u8 dtim_period;
+	__le16 bcn_interval;
+	__le16 atim_window;
+	u8 rsv[2];
 } __packed;
 #endif

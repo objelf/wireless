@@ -127,6 +127,134 @@ static int mt7921_mcu_read_eeprom(struct mt792x_dev *dev, u32 offset, u8 *val)
  * the legacy command set, and block ack sessions are negotiated by the
  * firmware. Nothing below is reached with the linux-firmware image.
  */
+static u8 mt7921_mcu_ce_band(enum nl80211_band band)
+{
+	switch (band) {
+	case NL80211_BAND_6GHZ:
+		return MT7921_CE_BAND_6G;
+	case NL80211_BAND_5GHZ:
+		return MT7921_CE_BAND_5G;
+	default:
+		return MT7921_CE_BAND_2G;
+	}
+}
+
+static u16
+mt7921_mcu_ce_rates(struct ieee80211_supported_band *sband, u32 rates)
+{
+	/* rate bit order of the firmware, in units of 100 kbps */
+	static const u16 order[] = {
+		10, 20, 55, 110, 220, 330, 60, 90, 120, 180, 240, 360, 480, 540,
+	};
+	u16 val = 0;
+	int i, j;
+
+	for (i = 0; i < sband->n_bitrates; i++) {
+		if (!(rates & BIT(i)))
+			continue;
+
+		for (j = 0; j < ARRAY_SIZE(order); j++)
+			if (sband->bitrates[i].bitrate == order[j])
+				val |= BIT(j);
+	}
+
+	return val;
+}
+
+static struct cfg80211_chan_def *
+mt7921_mcu_ce_chandef(struct mt792x_dev *dev, struct ieee80211_vif *vif)
+{
+	struct mt792x_vif *mvif = (struct mt792x_vif *)vif->drv_priv;
+	struct ieee80211_chanctx_conf *ctx = mvif->bss_conf.mt76.ctx;
+
+	return ctx ? &ctx->def : &dev->mphy.chandef;
+}
+
+static void
+mt7921_mcu_ce_chan(const struct cfg80211_chan_def *chandef, u8 *sco,
+		   u8 *width, u8 *center_chan, u8 *center_chan2)
+{
+	int bw = nl80211_chan_width_to_mhz(chandef->width);
+	u32 freq = chandef->chan->center_freq;
+
+	*sco = MT7921_CE_SCO_NONE;
+	*width = MT7921_CE_CW_20_40MHZ;
+	*center_chan = 0;
+	*center_chan2 = 0;
+
+	if (bw < 40)
+		return;
+
+	/* which half of its 40 MHz pair the primary channel sits in */
+	if (((freq - (chandef->center_freq1 - bw / 2 + 10)) / 20) & 1)
+		*sco = MT7921_CE_SCO_BELOW;
+	else
+		*sco = MT7921_CE_SCO_ABOVE;
+
+	switch (chandef->width) {
+	case NL80211_CHAN_WIDTH_80:
+		*width = MT7921_CE_CW_80MHZ;
+		break;
+	case NL80211_CHAN_WIDTH_160:
+		*width = MT7921_CE_CW_160MHZ;
+		break;
+	case NL80211_CHAN_WIDTH_80P80:
+		*width = MT7921_CE_CW_80P80MHZ;
+		*center_chan2 =
+			ieee80211_frequency_to_channel(chandef->center_freq2);
+		break;
+	default:
+		return;
+	}
+
+	*center_chan = ieee80211_frequency_to_channel(chandef->center_freq1);
+}
+
+static u16 mt7921_mcu_ce_fixed_rate(struct ieee80211_vif *vif,
+				    enum nl80211_band band)
+{
+	if (band == NL80211_BAND_2GHZ && !vif->p2p)
+		return MT7921_CE_RATE_CCK_1M;
+
+	return MT7921_CE_RATE_OFDM_6M;
+}
+
+static u8
+mt7921_mcu_ce_phy_type(struct mt792x_dev *dev, struct ieee80211_vif *vif,
+		       struct ieee80211_sta *sta, enum nl80211_band band)
+{
+	struct ieee80211_supported_band *sband;
+	bool ht, vht, he;
+	u8 type;
+
+	sband = mt76_hw(dev)->wiphy->bands[band];
+	if (sta) {
+		ht = sta->deflink.ht_cap.ht_supported;
+		vht = sta->deflink.vht_cap.vht_supported;
+		he = sta->deflink.he_cap.has_he;
+	} else {
+		ht = sband->ht_cap.ht_supported;
+		vht = sband->vht_cap.vht_supported;
+		he = !!ieee80211_get_he_iftype_cap_vif(sband, vif);
+	}
+
+	if (band != NL80211_BAND_2GHZ)
+		type = MT7921_CE_PHY_OFDM;
+	else if (vif->p2p)
+		type = MT7921_CE_PHY_ERP_P2P;
+	else
+		type = MT7921_CE_PHY_HR_DSSS | MT7921_CE_PHY_ERP;
+
+	if (ht)
+		type |= MT7921_CE_PHY_HT;
+	if (vht)
+		type |= MT7921_CE_PHY_VHT;
+	if (he)
+		type |= MT7921_CE_PHY_HE;
+
+	return type;
+}
+
 static int mt7921_mcu_ce_basic_config(struct mt792x_dev *dev)
 {
 	struct mt7921_ce_basic_config req = {
@@ -138,6 +266,183 @@ static int mt7921_mcu_ce_basic_config(struct mt792x_dev *dev)
 				 &req, sizeof(req), false);
 }
 
+static int
+mt7921_mcu_ce_bss_activate(struct mt792x_dev *dev,
+			   struct ieee80211_vif *vif, bool enable)
+{
+	struct mt792x_vif *mvif = (struct mt792x_vif *)vif->drv_priv;
+	struct mt7921_ce_bss_activate req = {
+		.bss_idx = mvif->bss_conf.mt76.idx,
+		.active = enable,
+		.omac_idx = mvif->bss_conf.mt76.omac_idx,
+		.bmc_wlan_idx = mvif->sta.deflink.wcid.idx,
+	};
+
+	/* soft AP and P2P roles all live in the P2P network */
+	if (vif->type == NL80211_IFTYPE_STATION && !vif->p2p)
+		req.network_type = MT7921_CE_NETWORK_AIS;
+	else
+		req.network_type = MT7921_CE_NETWORK_P2P;
+
+	memcpy(req.addr, vif->addr, ETH_ALEN);
+
+	return mt76_mcu_send_msg(&dev->mt76, MCU_CE_CMD(BSS_ACTIVATE),
+				 &req, sizeof(req), false);
+}
+
+static void
+mt7921_mcu_ce_fill_rlm(struct mt792x_dev *dev, struct ieee80211_vif *vif,
+		       struct cfg80211_chan_def *chandef,
+		       struct mt7921_ce_bss_rlm *rlm)
+{
+	struct mt792x_vif *mvif = (struct mt792x_vif *)vif->drv_priv;
+	struct ieee80211_bss_conf *conf = &vif->bss_conf;
+	enum nl80211_band band = chandef->chan->band;
+	struct ieee80211_supported_band *sband;
+
+	sband = mt76_hw(dev)->wiphy->bands[band];
+
+	rlm->bss_idx = mvif->bss_conf.mt76.idx;
+	rlm->band = mt7921_mcu_ce_band(band);
+	rlm->primary_chan = chandef->chan->hw_value;
+	mt7921_mcu_ce_chan(chandef, &rlm->sco, &rlm->vht_width,
+			   &rlm->vht_center_chan, &rlm->vht_center_chan2);
+
+	rlm->erp_protect = conf->use_cts_prot;
+	rlm->ht_protect = conf->ht_operation_mode &
+			  IEEE80211_HT_OP_MODE_PROTECTION;
+	rlm->ht_op_info2 = cpu_to_le16(conf->ht_operation_mode);
+	rlm->ht_op_info1 = rlm->sco;
+	if (rlm->sco != MT7921_CE_SCO_NONE)
+		rlm->ht_op_info1 |= IEEE80211_HT_PARAM_CHAN_WIDTH_ANY;
+	rlm->short_preamble = conf->use_short_preamble;
+	rlm->short_slot = conf->use_short_slot;
+	/* the firmware takes the BSS basic rate set in this field */
+	rlm->vht_basic_mcs = cpu_to_le16(mt7921_mcu_ce_rates(sband,
+							     conf->basic_rates));
+	rlm->tx_nss = hweight8(dev->mphy.antenna_mask);
+	rlm->rx_nss = rlm->tx_nss;
+}
+
+/* @ctx is the channel context to move to, NULL for the one in use */
+int mt7921_mcu_ce_bss_rlm(struct mt792x_dev *dev, struct ieee80211_vif *vif,
+			  struct ieee80211_chanctx_conf *ctx)
+{
+	struct mt7921_ce_bss_rlm req = {};
+
+	mt7921_mcu_ce_fill_rlm(dev, vif,
+			       ctx ? &ctx->def : mt7921_mcu_ce_chandef(dev, vif),
+			       &req);
+
+	return mt76_mcu_send_msg(&dev->mt76, MCU_CE_CMD(SET_BSS_RLM),
+				 &req, sizeof(req), false);
+}
+
+/* @sta is the AP on a station interface, NULL otherwise */
+static int
+mt7921_mcu_ce_bss_info(struct mt792x_dev *dev, struct ieee80211_vif *vif,
+		       struct ieee80211_sta *sta, bool enable)
+{
+	struct cfg80211_chan_def *chandef = mt7921_mcu_ce_chandef(dev, vif);
+	struct mt792x_vif *mvif = (struct mt792x_vif *)vif->drv_priv;
+	struct ieee80211_bss_conf *conf = &vif->bss_conf;
+	enum nl80211_band band = chandef->chan->band;
+	struct ieee80211_supported_band *sband;
+	struct mt7921_ce_bss_info req = {
+		.bss_idx = mvif->bss_conf.mt76.idx,
+		.conn_state = enable ? MT7921_CE_MEDIA_CONNECTED :
+				       MT7921_CE_MEDIA_DISCONNECTED,
+		.qbss = conf->qos,
+		.ap_sta_idx = MT7921_CE_STA_IDX_NONE,
+		.auth_mode = MT7921_CE_AUTH_OPEN,
+		.enc_status = MT7921_CE_ENC_NONE,
+		.bmc_wlan_idx = mvif->sta.deflink.wcid.idx,
+		.hidden_ssid = conf->hidden_ssid,
+		.dbdc_band = MT7921_CE_DBDC_BAND_AUTO,
+		.wmm_idx = mvif->bss_conf.mt76.wmm_idx,
+		.nss = hweight8(dev->mphy.antenna_mask),
+	};
+	u32 rates = conf->basic_rates;
+
+	BUILD_BUG_ON(sizeof(struct mt7921_ce_bss_rlm) != 22);
+	BUILD_BUG_ON(sizeof(req) != 120);
+
+	sband = mt76_hw(dev)->wiphy->bands[band];
+
+	switch (vif->type) {
+	case NL80211_IFTYPE_AP:
+		req.op_mode = MT7921_CE_OP_MODE_AP;
+		req.ap_mode = !vif->p2p;
+		rates = GENMASK(sband->n_bitrates - 1, 0);
+		break;
+	case NL80211_IFTYPE_ADHOC:
+		req.op_mode = MT7921_CE_OP_MODE_IBSS;
+		rates = GENMASK(sband->n_bitrates - 1, 0);
+		break;
+	case NL80211_IFTYPE_P2P_DEVICE:
+		req.op_mode = MT7921_CE_OP_MODE_P2P_DEV;
+		break;
+	default:
+		req.op_mode = MT7921_CE_OP_MODE_INFRA;
+		if (enable && sta) {
+			struct mt792x_sta *msta;
+
+			msta = (struct mt792x_sta *)sta->drv_priv;
+			req.ap_sta_idx = msta->deflink.wcid.idx;
+			rates = sta->deflink.supp_rates[band];
+		}
+		break;
+	}
+
+	req.ssid_len = min_t(u8, vif->cfg.ssid_len, sizeof(req.ssid));
+	memcpy(req.ssid, vif->cfg.ssid, req.ssid_len);
+	memcpy(req.bssid, conf->bssid, ETH_ALEN);
+
+	req.oper_rates = cpu_to_le16(mt7921_mcu_ce_rates(sband, rates));
+	req.basic_rates = cpu_to_le16(mt7921_mcu_ce_rates(sband,
+							  conf->basic_rates));
+	req.fixed_rate = cpu_to_le16(mt7921_mcu_ce_fixed_rate(vif, band));
+	req.phy_type = mt7921_mcu_ce_phy_type(dev, vif, sta, band);
+
+	if (band != NL80211_BAND_2GHZ)
+		req.basic_phy_type = MT7921_CE_PHY_IDX_OFDM;
+	else if (vif->p2p)
+		req.basic_phy_type = MT7921_CE_PHY_IDX_ERP_P2P;
+	else
+		req.basic_phy_type = MT7921_CE_PHY_IDX_ERP;
+
+	mt7921_mcu_ce_fill_rlm(dev, vif, chandef, &req.rlm);
+
+	if (conf->he_support) {
+		u32 params = conf->he_oper.params;
+
+		req.he_op_params[0] = params;
+		req.he_op_params[1] = params >> 8;
+		req.he_op_params[2] = params >> 16;
+		req.bss_color = conf->he_bss_color.color;
+		if (!conf->he_bss_color.enabled)
+			req.bss_color |= IEEE80211_HE_OPERATION_BSS_COLOR_DISABLED >> 24;
+		req.he_basic_mcs = cpu_to_le16(conf->he_oper.nss_set);
+	}
+
+	return mt76_mcu_send_msg(&dev->mt76, MCU_CE_CMD(SET_BSS_INFO),
+				 &req, sizeof(req), false);
+}
+
+int mt7921_mcu_ce_bss_created(struct mt792x_dev *dev,
+			      struct ieee80211_vif *vif)
+{
+	struct mt792x_vif *mvif = (struct mt792x_vif *)vif->drv_priv;
+	struct mt7921_ce_bss_created req = {
+		.bss_idx = mvif->bss_conf.mt76.idx,
+		.dtim_period = vif->bss_conf.dtim_period,
+		.bcn_interval = cpu_to_le16(vif->bss_conf.beacon_int),
+	};
+
+	return mt76_mcu_send_msg(&dev->mt76, MCU_CE_CMD(SET_BSS_CREATED),
+				 &req, sizeof(req), false);
+}
+
 /* Entry points shared by both firmwares. With the linux-firmware image each
  * of them makes the very call the driver made before.
  */
@@ -145,6 +450,9 @@ int mt7921_mcu_add_dev(struct mt792x_dev *dev, struct ieee80211_vif *vif,
 		       bool enable)
 {
 	struct mt792x_vif *mvif = (struct mt792x_vif *)vif->drv_priv;
+
+	if (dev->fw_legacy)
+		return mt7921_mcu_ce_bss_activate(dev, vif, enable);
 
 	return mt76_connac_mcu_uni_add_dev(&dev->mphy, &vif->bss_conf,
 					   &mvif->bss_conf.mt76,
@@ -157,6 +465,9 @@ int mt7921_mcu_add_bss(struct mt792x_dev *dev, struct ieee80211_vif *vif,
 {
 	struct mt792x_vif *mvif = (struct mt792x_vif *)vif->drv_priv;
 
+	if (dev->fw_legacy)
+		return mt7921_mcu_ce_bss_info(dev, vif, sta, enable);
+
 	return mt76_connac_mcu_uni_add_bss(&dev->mphy, vif,
 					   &mvif->sta.deflink.wcid, enable,
 					   ctx);
@@ -166,6 +477,9 @@ int mt7921_mcu_set_chctx(struct mt792x_dev *dev, struct ieee80211_vif *vif,
 			 struct ieee80211_chanctx_conf *ctx)
 {
 	struct mt792x_vif *mvif = (struct mt792x_vif *)vif->drv_priv;
+
+	if (dev->fw_legacy)
+		return mt7921_mcu_ce_bss_rlm(dev, vif, ctx);
 
 	return mt76_connac_mcu_uni_set_chctx(mvif->phy->mt76,
 					     &mvif->bss_conf.mt76, ctx);

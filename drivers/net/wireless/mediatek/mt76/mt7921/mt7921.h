@@ -348,6 +348,12 @@ int mt7921_mcu_update_gtk_rekey(struct ieee80211_hw *hw,
 int mt7921_mcu_update_arp_filter(struct mt792x_dev *dev,
 				 struct ieee80211_vif *vif,
 				 struct ieee80211_bss_conf *info);
+
+/* legacy firmware only */
+int mt7921_mcu_ce_bss_rlm(struct mt792x_dev *dev, struct ieee80211_vif *vif,
+			  struct ieee80211_chanctx_conf *ctx);
+int mt7921_mcu_ce_bss_created(struct mt792x_dev *dev,
+			      struct ieee80211_vif *vif);
 int mt7921_mcu_get_temperature(struct mt792x_phy *phy);
 int mt7921_mcu_set_thermal_protect(struct mt792x_dev *dev);
 
