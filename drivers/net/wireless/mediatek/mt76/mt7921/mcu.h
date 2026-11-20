@@ -123,6 +123,8 @@ struct mt7921_clc_info_tlv {
  */
 enum {
 	MCU_CE_CMD_BASIC_CONFIG = 0x02,
+	MCU_CE_CMD_ADD_REMOVE_KEY = 0x07,
+	MCU_CE_CMD_DEFAULT_KEY_ID = 0x08,
 	MCU_CE_CMD_BSS_ACTIVATE = 0x11,
 	MCU_CE_CMD_SET_BSS_INFO = 0x12,
 	MCU_CE_CMD_UPDATE_STA_REC = 0x13,
@@ -193,6 +195,14 @@ enum {
 #define MT7921_CE_ENC_NONE		1
 #define MT7921_CE_ENC_TKIP		4
 #define MT7921_CE_ENC_AES		6
+
+#define MT7921_CE_CIPHER_WEP40		1
+#define MT7921_CE_CIPHER_TKIP		2
+#define MT7921_CE_CIPHER_CCMP		4
+#define MT7921_CE_CIPHER_WEP104		5
+#define MT7921_CE_CIPHER_CCMP_256	10
+#define MT7921_CE_CIPHER_GCMP		11
+#define MT7921_CE_CIPHER_GCMP_256	12
 
 #define MT7921_CE_RTS_POLICY_LEGACY	3
 
@@ -370,6 +380,29 @@ struct mt7921_ce_sta_remove {
 	u8 sta_idx;
 	u8 bss_idx;
 	u8 rsv;
+} __packed;
+
+struct mt7921_ce_key {
+	u8 add;
+	u8 tx_key;
+	u8 pairwise;
+	u8 authenticator;
+	u8 addr[ETH_ALEN];
+	u8 bss_idx;
+	u8 cipher;
+	u8 key_id;
+	u8 key_len;
+	u8 wlan_idx;
+	u8 mgmt_protection;
+	u8 key[32];
+	u8 rsc[16];
+} __packed;
+
+struct mt7921_ce_default_key {
+	u8 bss_idx;
+	u8 key_id;
+	u8 unicast;
+	u8 multicast;
 } __packed;
 
 struct mt7921_ce_bss_created {

@@ -520,6 +520,43 @@ out:
 }
 EXPORT_SYMBOL_GPL(mt7921_set_channel);
 
+/* Legacy firmware: what follows a key command. A WEP key lives in the
+ * interface entry and is picked through the default key ID. The BSS carries
+ * the cipher in use, which is only known once a key shows up.
+ */
+static int
+mt7921_ce_key_done(struct mt792x_dev *dev, struct ieee80211_vif *vif,
+		   struct ieee80211_sta *sta, struct ieee80211_key_conf *key,
+		   enum set_key_cmd cmd)
+{
+	struct mt792x_vif *mvif = (struct mt792x_vif *)vif->drv_priv;
+	bool pairwise = key->flags & IEEE80211_KEY_FLAG_PAIRWISE;
+
+	if (cmd != SET_KEY)
+		return 0;
+
+	if (key->cipher == WLAN_CIPHER_SUITE_WEP104 ||
+	    key->cipher == WLAN_CIPHER_SUITE_WEP40) {
+		int err = mt7921_mcu_ce_default_key(dev, vif, key->keyidx);
+
+		if (err)
+			return err;
+	}
+
+	if (vif->type == NL80211_IFTYPE_STATION) {
+		if (!sta || sta->tdls || !pairwise)
+			return 0;
+	} else if (vif->type != NL80211_IFTYPE_AP || sta) {
+		return 0;
+	}
+
+	mvif->bss_conf.mt76.cipher = mt76_connac_mcu_get_cipher(key->cipher);
+	if (vif->type == NL80211_IFTYPE_AP && !vif->bss_conf.enable_beacon)
+		return 0;
+
+	return mt7921_mcu_add_bss(dev, vif, sta, true, NULL);
+}
+
 static int mt7921_set_key(struct ieee80211_hw *hw, enum set_key_cmd cmd,
 			  struct ieee80211_vif *vif, struct ieee80211_sta *sta,
 			  struct ieee80211_key_conf *key)
@@ -540,6 +577,14 @@ static int mt7921_set_key(struct ieee80211_hw *hw, enum set_key_cmd cmd,
 	    (key->cipher == WLAN_CIPHER_SUITE_TKIP ||
 	     key->cipher == WLAN_CIPHER_SUITE_CCMP) &&
 	    !(key->flags & IEEE80211_KEY_FLAG_PAIRWISE))
+		return -EOPNOTSUPP;
+
+	/* management frame protection and SMS4 stay in software with the
+	 * legacy firmware
+	 */
+	if (dev->fw_legacy &&
+	    (key->cipher == WLAN_CIPHER_SUITE_AES_CMAC ||
+	     key->cipher == WLAN_CIPHER_SUITE_SMS4))
 		return -EOPNOTSUPP;
 
 	/* fall back to sw encryption for unsupported ciphers */
@@ -585,6 +630,11 @@ static int mt7921_set_key(struct ieee80211_hw *hw, enum set_key_cmd cmd,
 				 &msta->deflink.bip, key, cmd);
 	if (err)
 		goto out;
+
+	if (dev->fw_legacy) {
+		err = mt7921_ce_key_done(dev, vif, sta, key, cmd);
+		goto out;
+	}
 
 	if (key->cipher == WLAN_CIPHER_SUITE_WEP104 ||
 	    key->cipher == WLAN_CIPHER_SUITE_WEP40)

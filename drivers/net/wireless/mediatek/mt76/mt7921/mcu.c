@@ -411,6 +411,24 @@ mt7921_mcu_ce_bss_info(struct mt792x_dev *dev, struct ieee80211_vif *vif,
 	else
 		req.basic_phy_type = MT7921_CE_PHY_IDX_ERP;
 
+	/* one cipher is all that is known here, derive both fields from it */
+	switch (mvif->bss_conf.mt76.cipher) {
+	case MCU_CIPHER_NONE:
+		break;
+	case MCU_CIPHER_WEP40:
+	case MCU_CIPHER_WEP104:
+		req.enc_status = MT7921_CE_ENC_WEP;
+		break;
+	case MCU_CIPHER_TKIP:
+		req.auth_mode = MT7921_CE_AUTH_WPA_PSK;
+		req.enc_status = MT7921_CE_ENC_TKIP;
+		break;
+	default:
+		req.auth_mode = MT7921_CE_AUTH_WPA2_PSK;
+		req.enc_status = MT7921_CE_ENC_AES;
+		break;
+	}
+
 	mt7921_mcu_ce_fill_rlm(dev, vif, chandef, &req.rlm);
 
 	if (conf->he_support) {
@@ -424,6 +442,9 @@ mt7921_mcu_ce_bss_info(struct mt792x_dev *dev, struct ieee80211_vif *vif,
 			req.bss_color |= IEEE80211_HE_OPERATION_BSS_COLOR_DISABLED >> 24;
 		req.he_basic_mcs = cpu_to_le16(conf->he_oper.nss_set);
 	}
+
+	if (!enable)
+		mvif->bss_conf.mt76.cipher = MCU_CIPHER_NONE;
 
 	return mt76_mcu_send_msg(&dev->mt76, MCU_CE_CMD(SET_BSS_INFO),
 				 &req, sizeof(req), false);
@@ -578,6 +599,95 @@ mt7921_mcu_ce_sta_update(struct mt792x_dev *dev, struct ieee80211_sta *sta,
 				     MCU_CE_CMD(UPDATE_STA_REC), false);
 }
 
+static int mt7921_mcu_ce_cipher(u32 cipher)
+{
+	switch (cipher) {
+	case WLAN_CIPHER_SUITE_WEP40:
+		return MT7921_CE_CIPHER_WEP40;
+	case WLAN_CIPHER_SUITE_WEP104:
+		return MT7921_CE_CIPHER_WEP104;
+	case WLAN_CIPHER_SUITE_TKIP:
+		return MT7921_CE_CIPHER_TKIP;
+	case WLAN_CIPHER_SUITE_CCMP:
+		return MT7921_CE_CIPHER_CCMP;
+	case WLAN_CIPHER_SUITE_CCMP_256:
+		return MT7921_CE_CIPHER_CCMP_256;
+	case WLAN_CIPHER_SUITE_GCMP:
+		return MT7921_CE_CIPHER_GCMP;
+	case WLAN_CIPHER_SUITE_GCMP_256:
+		return MT7921_CE_CIPHER_GCMP_256;
+	default:
+		return -EOPNOTSUPP;
+	}
+}
+
+/* @wcid is the peer for a pairwise key and the interface for a group key */
+static int
+mt7921_mcu_ce_add_key(struct mt792x_dev *dev, struct ieee80211_vif *vif,
+		      struct ieee80211_sta *sta, struct mt76_wcid *wcid,
+		      struct ieee80211_key_conf *key, enum set_key_cmd cmd)
+{
+	struct mt792x_vif *mvif = (struct mt792x_vif *)vif->drv_priv;
+	bool pairwise = key->flags & IEEE80211_KEY_FLAG_PAIRWISE;
+	bool ap = vif->type == NL80211_IFTYPE_AP;
+	struct mt7921_ce_key req = {
+		.add = cmd == SET_KEY,
+		.tx_key = pairwise || ap,
+		.pairwise = pairwise,
+		.authenticator = ap,
+		.bss_idx = mvif->bss_conf.mt76.idx,
+		.key_id = key->keyidx,
+		.wlan_idx = wcid->idx,
+	};
+	int cipher;
+
+	BUILD_BUG_ON(sizeof(req) != 64);
+
+	cipher = mt7921_mcu_ce_cipher(key->cipher);
+	if (cipher < 0)
+		return cipher;
+
+	if (key->keylen > sizeof(req.key))
+		return -EINVAL;
+
+	req.cipher = cipher;
+	if (sta)
+		memcpy(req.addr, sta->addr, ETH_ALEN);
+	else if (ap)
+		eth_broadcast_addr(req.addr);
+	else
+		memcpy(req.addr, vif->bss_conf.bssid, ETH_ALEN);
+
+	if (cmd == SET_KEY) {
+		req.key_len = key->keylen;
+		req.mgmt_protection = pairwise && sta && sta->mfp;
+		memcpy(req.key, key->key, key->keylen);
+		if (key->cipher == WLAN_CIPHER_SUITE_TKIP) {
+			/* the firmware wants the RX MIC key first */
+			memcpy(req.key + 16, key->key + 24, 8);
+			memcpy(req.key + 24, key->key + 16, 8);
+		}
+	}
+
+	return mt76_mcu_send_msg(&dev->mt76, MCU_CE_CMD(ADD_REMOVE_KEY),
+				 &req, sizeof(req), false);
+}
+
+int mt7921_mcu_ce_default_key(struct mt792x_dev *dev,
+			      struct ieee80211_vif *vif, u8 key_id)
+{
+	struct mt792x_vif *mvif = (struct mt792x_vif *)vif->drv_priv;
+	struct mt7921_ce_default_key req = {
+		.bss_idx = mvif->bss_conf.mt76.idx,
+		.key_id = key_id,
+		.unicast = 1,
+		.multicast = 1,
+	};
+
+	return mt76_mcu_send_msg(&dev->mt76, MCU_CE_CMD(DEFAULT_KEY_ID),
+				 &req, sizeof(req), false);
+}
+
 int mt7921_mcu_ce_bss_created(struct mt792x_dev *dev,
 			      struct ieee80211_vif *vif)
 {
@@ -639,6 +749,9 @@ int mt7921_mcu_add_key(struct mt792x_dev *dev, struct ieee80211_vif *vif,
 		       struct mt76_connac_sta_key_conf *sta_key_conf,
 		       struct ieee80211_key_conf *key, enum set_key_cmd cmd)
 {
+	if (dev->fw_legacy)
+		return mt7921_mcu_ce_add_key(dev, vif, sta, wcid, key, cmd);
+
 	return mt76_connac_mcu_add_key(&dev->mt76, vif, sta_key_conf, key,
 				       MCU_UNI_CMD(STA_REC_UPDATE), wcid, cmd);
 }
