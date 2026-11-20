@@ -270,7 +270,7 @@ static int mt7921u_suspend(struct usb_interface *intf, pm_message_t state)
 	pm->suspended = true;
 	flush_work(&dev->reset_work);
 
-	err = mt76_connac_mcu_set_hif_suspend(&dev->mt76, true, true);
+	err = mt7921_mcu_set_hif_suspend(dev, true);
 	if (err)
 		goto failed;
 
@@ -320,7 +320,7 @@ static int mt7921u_resume(struct usb_interface *intf)
 	if (err < 0)
 		goto failed;
 
-	err = mt76_connac_mcu_set_hif_suspend(&dev->mt76, false, true);
+	err = mt7921_mcu_set_hif_suspend(dev, false);
 failed:
 	pm->suspended = false;
 

@@ -123,6 +123,73 @@ static int mt7921_mcu_read_eeprom(struct mt792x_dev *dev, u32 offset, u8 *val)
 	return 0;
 }
 
+/* Entry points shared by both firmwares. With the linux-firmware image each
+ * of them makes the very call the driver made before.
+ */
+int mt7921_mcu_add_dev(struct mt792x_dev *dev, struct ieee80211_vif *vif,
+		       bool enable)
+{
+	struct mt792x_vif *mvif = (struct mt792x_vif *)vif->drv_priv;
+
+	return mt76_connac_mcu_uni_add_dev(&dev->mphy, &vif->bss_conf,
+					   &mvif->bss_conf.mt76,
+					   &mvif->sta.deflink.wcid, enable);
+}
+
+int mt7921_mcu_add_bss(struct mt792x_dev *dev, struct ieee80211_vif *vif,
+		       struct ieee80211_sta *sta, bool enable,
+		       struct ieee80211_chanctx_conf *ctx)
+{
+	struct mt792x_vif *mvif = (struct mt792x_vif *)vif->drv_priv;
+
+	return mt76_connac_mcu_uni_add_bss(&dev->mphy, vif,
+					   &mvif->sta.deflink.wcid, enable,
+					   ctx);
+}
+
+int mt7921_mcu_set_chctx(struct mt792x_dev *dev, struct ieee80211_vif *vif,
+			 struct ieee80211_chanctx_conf *ctx)
+{
+	struct mt792x_vif *mvif = (struct mt792x_vif *)vif->drv_priv;
+
+	return mt76_connac_mcu_uni_set_chctx(mvif->phy->mt76,
+					     &mvif->bss_conf.mt76, ctx);
+}
+
+int mt7921_mcu_add_key(struct mt792x_dev *dev, struct ieee80211_vif *vif,
+		       struct ieee80211_sta *sta, struct mt76_wcid *wcid,
+		       struct mt76_connac_sta_key_conf *sta_key_conf,
+		       struct ieee80211_key_conf *key, enum set_key_cmd cmd)
+{
+	return mt76_connac_mcu_add_key(&dev->mt76, vif, sta_key_conf, key,
+				       MCU_UNI_CMD(STA_REC_UPDATE), wcid, cmd);
+}
+
+#ifdef CONFIG_PM
+int mt7921_mcu_set_hif_suspend(struct mt792x_dev *dev, bool suspend)
+{
+	return mt76_connac_mcu_set_hif_suspend(&dev->mt76, suspend, true);
+}
+EXPORT_SYMBOL_GPL(mt7921_mcu_set_hif_suspend);
+
+int mt7921_mcu_update_gtk_rekey(struct ieee80211_hw *hw,
+				struct ieee80211_vif *vif,
+				struct cfg80211_gtk_rekey_data *key)
+{
+	return mt76_connac_mcu_update_gtk_rekey(hw, vif, key);
+}
+#endif /* CONFIG_PM */
+
+int mt7921_mcu_update_arp_filter(struct mt792x_dev *dev,
+				 struct ieee80211_vif *vif,
+				 struct ieee80211_bss_conf *info)
+{
+	struct mt792x_vif *mvif = (struct mt792x_vif *)vif->drv_priv;
+
+	return mt76_connac_mcu_update_arp_filter(&dev->mt76,
+						 &mvif->bss_conf.mt76, info);
+}
+
 #ifdef CONFIG_PM
 
 static int

@@ -328,6 +328,26 @@ int mt7921_mcu_set_sniffer(struct mt792x_dev *dev, struct ieee80211_vif *vif,
 			   bool enable);
 int mt7921_mcu_config_sniffer(struct mt792x_vif *vif,
 			      struct ieee80211_chanctx_conf *ctx);
+
+/* shared by both firmwares, see mcu.c */
+int mt7921_mcu_add_dev(struct mt792x_dev *dev, struct ieee80211_vif *vif,
+		       bool enable);
+int mt7921_mcu_add_bss(struct mt792x_dev *dev, struct ieee80211_vif *vif,
+		       struct ieee80211_sta *sta, bool enable,
+		       struct ieee80211_chanctx_conf *ctx);
+int mt7921_mcu_set_chctx(struct mt792x_dev *dev, struct ieee80211_vif *vif,
+			 struct ieee80211_chanctx_conf *ctx);
+int mt7921_mcu_add_key(struct mt792x_dev *dev, struct ieee80211_vif *vif,
+		       struct ieee80211_sta *sta, struct mt76_wcid *wcid,
+		       struct mt76_connac_sta_key_conf *sta_key_conf,
+		       struct ieee80211_key_conf *key, enum set_key_cmd cmd);
+int mt7921_mcu_set_hif_suspend(struct mt792x_dev *dev, bool suspend);
+int mt7921_mcu_update_gtk_rekey(struct ieee80211_hw *hw,
+				struct ieee80211_vif *vif,
+				struct cfg80211_gtk_rekey_data *key);
+int mt7921_mcu_update_arp_filter(struct mt792x_dev *dev,
+				 struct ieee80211_vif *vif,
+				 struct ieee80211_bss_conf *info);
 int mt7921_mcu_get_temperature(struct mt792x_phy *phy);
 int mt7921_mcu_set_thermal_protect(struct mt792x_dev *dev);
 
