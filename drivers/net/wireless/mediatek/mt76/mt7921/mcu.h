@@ -125,6 +125,8 @@ enum {
 	MCU_CE_CMD_BASIC_CONFIG = 0x02,
 	MCU_CE_CMD_BSS_ACTIVATE = 0x11,
 	MCU_CE_CMD_SET_BSS_INFO = 0x12,
+	MCU_CE_CMD_UPDATE_STA_REC = 0x13,
+	MCU_CE_CMD_REMOVE_STA_REC = 0x14,
 	MCU_CE_CMD_SET_BSS_CREATED = 0x15,
 	MCU_CE_CMD_SET_BSS_RLM = 0x19,
 };
@@ -140,7 +142,16 @@ enum {
 #define MT7921_CE_MEDIA_CONNECTED	0
 #define MT7921_CE_MEDIA_DISCONNECTED	1
 
+/* station type: who the peer is, and what it is to us */
+#define MT7921_CE_STA_LEGACY		BIT(0)
+#define MT7921_CE_STA_P2P		BIT(1)
+#define MT7921_CE_STA_ROLE_ADHOC	BIT(4)
+#define MT7921_CE_STA_ROLE_CLIENT	BIT(5)
+#define MT7921_CE_STA_ROLE_AP		BIT(6)
+#define MT7921_CE_STA_ROLE_DLS		BIT(7)
+
 #define MT7921_CE_STA_IDX_NONE		0xfe
+#define MT7921_CE_WLAN_IDX_NONE		0xff
 
 #define MT7921_CE_PHY_HR_DSSS		BIT(0)
 #define MT7921_CE_PHY_ERP		BIT(1)
@@ -182,6 +193,12 @@ enum {
 #define MT7921_CE_ENC_NONE		1
 #define MT7921_CE_ENC_TKIP		4
 #define MT7921_CE_ENC_AES		6
+
+#define MT7921_CE_RTS_POLICY_LEGACY	3
+
+#define MT7921_CE_BA_SIZE		64
+#define MT7921_CE_BA_SIZE_HE		256
+#define MT7921_CE_MAX_AMSDU_LEN		11454
 
 struct mt7921_ce_basic_config {
 	u8 native_80211;
@@ -265,6 +282,94 @@ struct mt7921_ce_bss_info {
 	u8 mbssid_idx;
 	__le64 iot_ap_act_ext;
 	u8 rsv4[8];
+} __packed;
+
+struct mt7921_ce_sta_rec {
+	u8 sta_idx;
+	u8 sta_type;
+	u8 addr[ETH_ALEN];
+	__le16 aid;
+	__le16 listen_interval;
+	u8 bss_idx;
+	u8 phy_type;
+	__le16 rates;
+	__le16 basic_rates;
+	u8 qos;
+	u8 uapsd;
+	u8 state;
+	u8 mcs_set;
+	u8 mcs32;
+	u8 version;
+	u8 rx_mcs_bitmask[10];
+	__le16 rx_highest;
+	__le32 tx_rate_info;
+	__le16 ht_cap;
+	__le16 ht_ext_cap;
+	__le32 txbf_cap;
+	u8 ampdu_param;
+	u8 asel_cap;
+	u8 rcpi;
+	u8 need_resp;
+	u8 uapsd_ac;
+	u8 uapsd_sp;
+	u8 wlan_idx;
+	u8 bmc_wlan_idx;
+	__le32 vht_cap;
+	__le16 vht_rx_mcs_map;
+	__le16 vht_rx_highest;
+	__le16 vht_tx_mcs_map;
+	__le16 vht_tx_highest;
+	u8 rts_policy;
+	u8 vht_op_mode;
+	u8 traffic_type;
+	u8 tx_gf;
+	u8 tx_sgi;
+	u8 tx_stbc;
+	__le16 fixed_rate;
+	u8 tx_ampdu;
+	u8 rx_ampdu;
+	u8 rsv[2];
+	__le32 fixed_phy_rate;
+	__le16 max_link_speed;
+	__le16 min_link_speed;
+	__le32 flags;
+	union {
+		struct {
+			u8 tx;
+			u8 rx;
+			u8 rsv[2];
+		} ht;
+		struct {
+			__le16 tx;
+			__le16 rx;
+		} he;
+	} ba_size;
+	u8 txbf[30];
+	u8 mlr_mode;
+	u8 mlr_state;
+	u8 tx_amsdu_in_ampdu;
+	u8 rx_amsdu_in_ampdu;
+	u8 rsv2[2];
+	__le32 max_amsdu_len;
+	/* valid with version 1 */
+	u8 he_mac_cap[6];
+	u8 he_phy_cap[11];
+	u8 rsv3[3];
+	__le16 he_rx_mcs_80;
+	__le16 he_tx_mcs_80;
+	__le16 he_rx_mcs_160;
+	__le16 he_tx_mcs_160;
+	__le16 he_rx_mcs_80p80;
+	__le16 he_tx_mcs_80p80;
+	__le16 he_6g_cap;
+	u8 rsv4[30];
+} __packed;
+
+struct mt7921_ce_sta_remove {
+	u8 action;
+	u8 sta_idx;
+	u8 bss_idx;
+	u8 rsv;
 } __packed;
 
 struct mt7921_ce_bss_created {

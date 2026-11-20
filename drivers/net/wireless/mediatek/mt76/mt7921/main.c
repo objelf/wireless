@@ -883,6 +883,7 @@ int mt7921_mac_sta_event(struct mt76_dev *mdev, struct ieee80211_vif *vif,
 	struct mt792x_dev *dev = container_of(mdev, struct mt792x_dev, mt76);
 	struct mt792x_sta *msta = (struct mt792x_sta *)sta->drv_priv;
 	struct mt792x_vif *mvif = (struct mt792x_vif *)vif->drv_priv;
+	bool infra = vif->type == NL80211_IFTYPE_STATION && !sta->tdls;
 
 	if (sta->aid > MT7921_MAX_AID)
 		return -ENOENT;
@@ -898,7 +899,7 @@ int mt7921_mac_sta_event(struct mt76_dev *mdev, struct ieee80211_vif *vif,
 
 	mt792x_mutex_acquire(dev);
 
-	if (vif->type == NL80211_IFTYPE_STATION && !sta->tdls)
+	if (infra && !dev->fw_legacy)
 		mt7921_mcu_add_bss(dev, vif, sta, true,
 				   mvif->bss_conf.mt76.ctx);
 
@@ -909,6 +910,13 @@ int mt7921_mac_sta_event(struct mt76_dev *mdev, struct ieee80211_vif *vif,
 	memset(msta->deflink.airtime_ac, 0, sizeof(msta->deflink.airtime_ac));
 
 	mt7921_mcu_sta_update(dev, sta, vif, true, MT76_STA_INFO_STATE_ASSOC);
+
+	/* the legacy firmware looks the AP up in its station records when
+	 * the BSS goes to connected, so the record has to be there first
+	 */
+	if (infra && dev->fw_legacy)
+		mt7921_mcu_add_bss(dev, vif, sta, true,
+				   mvif->bss_conf.mt76.ctx);
 
 	mt792x_mutex_release(dev);
 
@@ -1249,8 +1257,13 @@ static void mt7921_sta_set_decap_offload(struct ieee80211_hw *hw,
 	else
 		clear_bit(MT_WCID_FLAG_HDR_TRANS, &msta->deflink.wcid.flags);
 
-	mt76_connac_mcu_sta_update_hdr_trans(&dev->mt76, vif, &msta->deflink.wcid,
-					     MCU_UNI_CMD(STA_REC_UPDATE));
+	/* header translation is not a per station setting in the legacy
+	 * command set
+	 */
+	if (!dev->fw_legacy)
+		mt76_connac_mcu_sta_update_hdr_trans(&dev->mt76, vif,
+						     &msta->deflink.wcid,
+						     MCU_UNI_CMD(STA_REC_UPDATE));
 
 	mt792x_mutex_release(dev);
 }

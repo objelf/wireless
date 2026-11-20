@@ -429,6 +429,155 @@ mt7921_mcu_ce_bss_info(struct mt792x_dev *dev, struct ieee80211_vif *vif,
 				 &req, sizeof(req), false);
 }
 
+static u8
+mt7921_mcu_ce_sta_type(struct ieee80211_vif *vif, struct ieee80211_sta *sta)
+{
+	switch (vif->type) {
+	case NL80211_IFTYPE_AP:
+		return MT7921_CE_STA_P2P | MT7921_CE_STA_ROLE_CLIENT;
+	case NL80211_IFTYPE_ADHOC:
+		return MT7921_CE_STA_LEGACY | MT7921_CE_STA_ROLE_ADHOC;
+	default:
+		if (sta->tdls)
+			return MT7921_CE_STA_LEGACY | MT7921_CE_STA_ROLE_DLS;
+		if (vif->p2p)
+			return MT7921_CE_STA_P2P | MT7921_CE_STA_ROLE_AP;
+
+		return MT7921_CE_STA_LEGACY | MT7921_CE_STA_ROLE_AP;
+	}
+}
+
+static int
+mt7921_mcu_ce_sta_update(struct mt792x_dev *dev, struct ieee80211_sta *sta,
+			 struct ieee80211_vif *vif, bool enable,
+			 enum mt76_sta_info_state state)
+{
+	struct cfg80211_chan_def *chandef = mt7921_mcu_ce_chandef(dev, vif);
+	struct mt792x_vif *mvif = (struct mt792x_vif *)vif->drv_priv;
+	struct ieee80211_link_sta *link = &sta->deflink;
+	enum nl80211_band band = chandef->chan->band;
+	struct ieee80211_supported_band *sband;
+	struct mt7921_ce_sta_rec *req;
+	struct mt792x_sta *msta;
+	struct sk_buff *skb;
+	int rssi;
+
+	BUILD_BUG_ON(sizeof(*req) != 200);
+
+	msta = (struct mt792x_sta *)sta->drv_priv;
+
+	if (!enable) {
+		struct mt7921_ce_sta_remove rm = {
+			.sta_idx = msta->deflink.wcid.idx,
+			.bss_idx = mvif->bss_conf.mt76.idx,
+		};
+
+		return mt76_mcu_send_msg(&dev->mt76,
+					 MCU_CE_CMD(REMOVE_STA_REC),
+					 &rm, sizeof(rm), false);
+	}
+
+	skb = mt76_mcu_msg_alloc(&dev->mt76, NULL, sizeof(*req));
+	if (!skb)
+		return -ENOMEM;
+
+	sband = mt76_hw(dev)->wiphy->bands[band];
+	rssi = -ewma_rssi_read(&mvif->bss_conf.rssi);
+
+	req = skb_put_zero(skb, sizeof(*req));
+	/* station record and WTBL share one index space in mt76 */
+	req->sta_idx = msta->deflink.wcid.idx;
+	req->wlan_idx = msta->deflink.wcid.idx;
+	req->bmc_wlan_idx = MT7921_CE_WLAN_IDX_NONE;
+	req->sta_type = mt7921_mcu_ce_sta_type(vif, sta);
+	memcpy(req->addr, sta->addr, ETH_ALEN);
+	if (vif->type == NL80211_IFTYPE_STATION && !sta->tdls)
+		req->aid = cpu_to_le16(vif->cfg.aid);
+	else
+		req->aid = cpu_to_le16(sta->aid);
+	req->listen_interval = cpu_to_le16(mt76_hw(dev)->conf.listen_interval);
+	req->bss_idx = mvif->bss_conf.mt76.idx;
+	req->phy_type = mt7921_mcu_ce_phy_type(dev, vif, sta, band);
+	req->rates = cpu_to_le16(mt7921_mcu_ce_rates(sband,
+						     link->supp_rates[band]));
+	req->basic_rates =
+		cpu_to_le16(mt7921_mcu_ce_rates(sband,
+						vif->bss_conf.basic_rates));
+	req->qos = sta->wme;
+	req->uapsd = !!sta->uapsd_queues;
+	req->uapsd_ac = sta->uapsd_queues;
+	req->uapsd_sp = sta->max_sp;
+	req->state = state;
+	req->rcpi = to_rcpi(rssi);
+	req->rts_policy = MT7921_CE_RTS_POLICY_LEGACY;
+	req->fixed_rate = cpu_to_le16(mt7921_mcu_ce_fixed_rate(vif, band));
+	req->tx_ampdu = 1;
+	req->rx_ampdu = 1;
+	req->ba_size.ht.tx = MT7921_CE_BA_SIZE;
+	req->ba_size.ht.rx = MT7921_CE_BA_SIZE;
+
+	if (link->ht_cap.ht_supported) {
+		struct ieee80211_sta_ht_cap *ht = &link->ht_cap;
+
+		req->mcs_set = ht->mcs.rx_mask[0];
+		req->mcs32 = ht->mcs.rx_mask[4] & BIT(0);
+		memcpy(req->rx_mcs_bitmask, ht->mcs.rx_mask,
+		       sizeof(req->rx_mcs_bitmask));
+		req->rx_highest = ht->mcs.rx_highest;
+		req->tx_rate_info = cpu_to_le32(ht->mcs.tx_params);
+		req->ht_cap = cpu_to_le16(ht->cap);
+		req->ampdu_param = ht->ampdu_factor |
+				   ht->ampdu_density << 2;
+		req->tx_gf = !!(ht->cap & IEEE80211_HT_CAP_GRN_FLD);
+		req->tx_sgi = !!(ht->cap & (IEEE80211_HT_CAP_SGI_20 |
+					    IEEE80211_HT_CAP_SGI_40));
+		req->tx_stbc = !!(ht->cap & IEEE80211_HT_CAP_RX_STBC);
+		req->tx_amsdu_in_ampdu = 1;
+		req->rx_amsdu_in_ampdu = 1;
+		req->max_amsdu_len = cpu_to_le32(MT7921_CE_MAX_AMSDU_LEN);
+	}
+
+	if (link->vht_cap.vht_supported) {
+		struct ieee80211_sta_vht_cap *vht = &link->vht_cap;
+
+		req->vht_cap = cpu_to_le32(vht->cap);
+		req->vht_rx_mcs_map = vht->vht_mcs.rx_mcs_map;
+		req->vht_rx_highest = vht->vht_mcs.rx_highest;
+		req->vht_tx_mcs_map = vht->vht_mcs.tx_mcs_map;
+		req->vht_tx_highest = vht->vht_mcs.tx_highest;
+	}
+
+	if (link->vht_cap.vht_supported || link->he_cap.has_he)
+		req->vht_op_mode = link->bandwidth |
+				   (max_t(u8, link->rx_nss, 1) - 1) <<
+				   IEEE80211_OPMODE_NOTIF_RX_NSS_SHIFT;
+
+	if (link->he_cap.has_he) {
+		struct ieee80211_sta_he_cap *he = &link->he_cap;
+
+		req->version = 1;
+		memcpy(req->he_mac_cap, he->he_cap_elem.mac_cap_info,
+		       sizeof(req->he_mac_cap));
+		memcpy(req->he_phy_cap, he->he_cap_elem.phy_cap_info,
+		       sizeof(req->he_phy_cap));
+		req->he_rx_mcs_80 = he->he_mcs_nss_supp.rx_mcs_80;
+		req->he_tx_mcs_80 = he->he_mcs_nss_supp.tx_mcs_80;
+		req->he_rx_mcs_160 = he->he_mcs_nss_supp.rx_mcs_160;
+		req->he_tx_mcs_160 = he->he_mcs_nss_supp.tx_mcs_160;
+		req->he_rx_mcs_80p80 = he->he_mcs_nss_supp.rx_mcs_80p80;
+		req->he_tx_mcs_80p80 = he->he_mcs_nss_supp.tx_mcs_80p80;
+		req->he_6g_cap = link->he_6ghz_capa.capa;
+		req->ba_size.he.tx = cpu_to_le16(MT7921_CE_BA_SIZE_HE);
+		req->ba_size.he.rx = cpu_to_le16(MT7921_CE_BA_SIZE_HE);
+		req->tx_amsdu_in_ampdu = 1;
+		req->rx_amsdu_in_ampdu = 1;
+		req->max_amsdu_len = cpu_to_le32(MT7921_CE_MAX_AMSDU_LEN);
+	}
+
+	return mt76_mcu_skb_send_msg(&dev->mt76, skb,
+				     MCU_CE_CMD(UPDATE_STA_REC), false);
+}
+
 int mt7921_mcu_ce_bss_created(struct mt792x_dev *dev,
 			      struct ieee80211_vif *vif)
 {
@@ -1546,6 +1695,11 @@ int mt7921_mcu_sta_update(struct mt792x_dev *dev, struct ieee80211_sta *sta,
 		.rcpi = to_rcpi(rssi),
 	};
 	struct mt792x_sta *msta;
+
+	/* the interface's own entry comes with the BSS in the legacy flow */
+	if (dev->fw_legacy)
+		return sta ? mt7921_mcu_ce_sta_update(dev, sta, vif, enable,
+						      state) : 0;
 
 	msta = sta ? (struct mt792x_sta *)sta->drv_priv : NULL;
 	info.wcid = msta ? &msta->deflink.wcid : &mvif->sta.deflink.wcid;
