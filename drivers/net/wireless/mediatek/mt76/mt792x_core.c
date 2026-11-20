@@ -803,6 +803,10 @@ int mt792x_init_wiphy(struct ieee80211_hw *hw)
 	else
 		wiphy->flags &= ~WIPHY_FLAG_HAS_REMAIN_ON_CHANNEL;
 
+	/* block ack sessions are negotiated by the legacy firmware */
+	if (dev->fw_legacy)
+		ieee80211_hw_set(hw, TX_AMPDU_SETUP_IN_HW);
+
 	err = mt792x_setup_iface_combinations(dev, wiphy);
 	if (err)
 		return err;

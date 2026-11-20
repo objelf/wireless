@@ -1026,6 +1026,29 @@ static int mt7921_set_rts_threshold(struct ieee80211_hw *hw, int radio_idx,
 	return 0;
 }
 
+/* Legacy firmware: block ack sessions are negotiated by the firmware and
+ * come in through mt7921_ce_ba_work(), which also sets up the reorder window.
+ * All mac80211 may still ask for is tearing an RX session down.
+ */
+static int
+mt7921_ce_ampdu_action(struct mt792x_dev *dev,
+		       struct ieee80211_ampdu_params *params)
+{
+	struct mt792x_sta *msta = (struct mt792x_sta *)params->sta->drv_priv;
+
+	switch (params->action) {
+	case IEEE80211_AMPDU_RX_START:
+		return 0;
+	case IEEE80211_AMPDU_RX_STOP:
+		mt792x_mutex_acquire(dev);
+		mt76_rx_aggr_stop(&dev->mt76, &msta->deflink.wcid, params->tid);
+		mt792x_mutex_release(dev);
+		return 0;
+	default:
+		return -EOPNOTSUPP;
+	}
+}
+
 static int
 mt7921_ampdu_action(struct ieee80211_hw *hw, struct ieee80211_vif *vif,
 		    struct ieee80211_ampdu_params *params)
@@ -1039,6 +1062,9 @@ mt7921_ampdu_action(struct ieee80211_hw *hw, struct ieee80211_vif *vif,
 	u16 ssn = params->ssn;
 	struct mt76_txq *mtxq;
 	int ret = 0;
+
+	if (dev->fw_legacy)
+		return mt7921_ce_ampdu_action(dev, params);
 
 	if (!txq)
 		return -EINVAL;

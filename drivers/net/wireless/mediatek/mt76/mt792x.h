@@ -410,6 +410,10 @@ struct mt792x_dev {
 	/* IPv6 addresses for WoWLAN */
 	struct sk_buff_head ipv6_ns_list;
 
+	/* block ack sessions reported by the MT7921 legacy firmware */
+	struct work_struct ce_ba_work;
+	struct sk_buff_head ce_ba_list;
+
 	enum environment_cap country_ie_env;
 	u32 backup_l1;
 	u32 backup_l2;

@@ -188,6 +188,8 @@ void mt7921_unregister_device(struct mt792x_dev *dev)
 	cancel_delayed_work_sync(&dev->phy.scan_work);
 	timer_shutdown_sync(&dev->phy.roc_timer);
 	cancel_work_sync(&dev->phy.roc_work);
+	cancel_work_sync(&dev->ce_ba_work);
+	skb_queue_purge(&dev->ce_ba_list);
 
 	/* Stop PM producers before mac80211 tears down its queues. */
 	disable_delayed_work_sync(&pm->ps_work);
@@ -227,6 +229,8 @@ int mt7921_register_device(struct mt792x_dev *dev)
 #if IS_ENABLED(CONFIG_IPV6)
 	INIT_WORK(&dev->ipv6_ns_work, mt7921_set_ipv6_ns_work);
 	skb_queue_head_init(&dev->ipv6_ns_list);
+	INIT_WORK(&dev->ce_ba_work, mt7921_ce_ba_work);
+	skb_queue_head_init(&dev->ce_ba_list);
 #endif
 	skb_queue_head_init(&dev->phy.scan_event_list);
 	skb_queue_head_init(&dev->coredump.msg_list);

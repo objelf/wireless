@@ -663,6 +663,12 @@ void mt7921_mac_reset_work(struct work_struct *work)
 	cancel_delayed_work_sync(&pm->ps_work);
 	cancel_work_sync(&pm->wake_work);
 
+	/* what the legacy firmware negotiated does not survive the reset */
+	if (dev->fw_legacy) {
+		cancel_work_sync(&dev->ce_ba_work);
+		skb_queue_purge(&dev->ce_ba_list);
+	}
+
 	for (i = 0; i < 10; i++) {
 		if (atomic_read(&dev->mt76.bus_hung))
 			return;

@@ -841,6 +841,113 @@ mt7921_mcu_ce_roc_event(struct mt792x_dev *dev, struct sk_buff *skb)
 		  jiffies + msecs_to_jiffies(le32_to_cpu(grant->max_interval)));
 }
 
+static void
+mt7921_mcu_ce_tx_addba_event(struct mt792x_dev *dev, struct sk_buff *skb)
+{
+	struct mt7921_ce_tx_addba *ba;
+	struct mt76_wcid *wcid;
+
+	if (skb->len < sizeof(struct mt76_connac2_mcu_rxd) + sizeof(*ba))
+		return;
+
+	ba = (struct mt7921_ce_tx_addba *)
+	     (skb->data + sizeof(struct mt76_connac2_mcu_rxd));
+
+	/* the firmware says which TIDs may carry A-MSDU in their A-MPDU */
+	rcu_read_lock();
+	wcid = mt76_wcid_ptr(dev, ba->sta_idx);
+	if (wcid && wcid->sta)
+		wcid->amsdu = !!ba->amsdu_bitmap;
+	rcu_read_unlock();
+}
+
+static void
+mt7921_mcu_ce_rx_ba(struct mt792x_dev *dev, u8 sta_idx, u8 tid, bool start,
+		    u16 ssn, u16 size)
+{
+	struct ieee80211_sta *sta;
+	struct ieee80211_vif *vif;
+	struct mt792x_sta *msta;
+	struct mt76_wcid *wcid;
+
+	lockdep_assert_held(&dev->mt76.mutex);
+
+	if (tid >= IEEE80211_NUM_TIDS)
+		return;
+
+	/* station removal takes the same mutex, so the entry stays around */
+	rcu_read_lock();
+	wcid = mt76_wcid_ptr(dev, sta_idx);
+	rcu_read_unlock();
+	if (!wcid || !wcid->sta)
+		return;
+
+	msta = container_of(wcid, struct mt792x_sta, deflink.wcid);
+	sta = container_of((void *)msta, struct ieee80211_sta, drv_priv);
+	vif = container_of((void *)msta->vif, struct ieee80211_vif, drv_priv);
+
+	if (!start) {
+		mt76_rx_aggr_stop(&dev->mt76, wcid, tid);
+		ieee80211_stop_rx_ba_session_offl(vif, sta->addr, tid);
+		return;
+	}
+
+	if (mt76_rx_aggr_start(&dev->mt76, wcid, tid, ssn, size))
+		return;
+
+	ieee80211_start_rx_ba_session_offl(vif, sta->addr, tid);
+}
+
+/* The firmware answered an ADDBA request or saw a DELBA on its own. All that
+ * is left for the host is the reorder window, which cannot be set up from the
+ * event context.
+ */
+void mt7921_ce_ba_work(struct work_struct *work)
+{
+	struct mt792x_dev *dev = container_of(work, struct mt792x_dev,
+					      ce_ba_work);
+	struct sk_buff *skb;
+
+	while ((skb = skb_dequeue(&dev->ce_ba_list)) != NULL) {
+		struct mt76_connac2_mcu_rxd *rxd;
+		int len;
+
+		rxd = (struct mt76_connac2_mcu_rxd *)skb->data;
+		len = skb->len - sizeof(*rxd);
+
+		mutex_lock(&dev->mt76.mutex);
+		if (rxd->eid == MCU_CE_EVENT_RX_ADDBA) {
+			struct mt7921_ce_rx_addba *ba = (void *)(rxd + 1);
+
+			if (len >= (int)sizeof(*ba)) {
+				u16 param = le16_to_cpu(ba->param);
+				u16 size;
+
+				size = u16_get_bits(param,
+						    IEEE80211_ADDBA_PARAM_BUF_SIZE_MASK);
+				if (!size)
+					size = IEEE80211_MAX_AMPDU_BUF_HT;
+
+				mt7921_mcu_ce_rx_ba(dev, ba->sta_idx,
+						    u16_get_bits(param,
+								 IEEE80211_ADDBA_PARAM_TID_MASK),
+						    true,
+						    IEEE80211_SEQ_TO_SN(le16_to_cpu(ba->ssn)),
+						    size);
+			}
+		} else {
+			struct mt7921_ce_rx_delba *ba = (void *)(rxd + 1);
+
+			if (len >= (int)sizeof(*ba))
+				mt7921_mcu_ce_rx_ba(dev, ba->sta_idx, ba->tid,
+						    false, 0, 0);
+		}
+		mutex_unlock(&dev->mt76.mutex);
+
+		dev_kfree_skb(skb);
+	}
+}
+
 /* Events only the legacy firmware sends. Returns true once consumed. */
 static bool
 mt7921_mcu_ce_rx_event(struct mt792x_dev *dev, struct sk_buff *skb)
@@ -848,16 +955,38 @@ mt7921_mcu_ce_rx_event(struct mt792x_dev *dev, struct sk_buff *skb)
 	struct mt76_connac2_mcu_rxd *rxd;
 
 	rxd = (struct mt76_connac2_mcu_rxd *)skb->data;
-	if (rxd->eid != MCU_CE_EVENT_CH_PRIVILEGE)
+	switch (rxd->eid) {
+	case MCU_CE_EVENT_RX_ADDBA:
+	case MCU_CE_EVENT_RX_DELBA:
+	case MCU_CE_EVENT_TX_ADDBA:
+	case MCU_CE_EVENT_CH_PRIVILEGE:
+		break;
+	default:
 		return false;
+	}
 
 	spin_lock_bh(&dev->mcu_event_lock);
-	if (!dev->mcu_events_stopped &&
-	    !test_bit(MT76_REMOVED, &dev->mphy.state))
-		mt7921_mcu_ce_roc_event(dev, skb);
-	spin_unlock_bh(&dev->mcu_event_lock);
+	if (dev->mcu_events_stopped ||
+	    test_bit(MT76_REMOVED, &dev->mphy.state))
+		goto free_skb;
 
+	switch (rxd->eid) {
+	case MCU_CE_EVENT_RX_ADDBA:
+	case MCU_CE_EVENT_RX_DELBA:
+		skb_queue_tail(&dev->ce_ba_list, skb);
+		queue_work(dev->mt76.wq, &dev->ce_ba_work);
+		goto out;
+	case MCU_CE_EVENT_TX_ADDBA:
+		mt7921_mcu_ce_tx_addba_event(dev, skb);
+		break;
+	default:
+		mt7921_mcu_ce_roc_event(dev, skb);
+		break;
+	}
+free_skb:
 	dev_kfree_skb(skb);
+out:
+	spin_unlock_bh(&dev->mcu_event_lock);
 
 	return true;
 }

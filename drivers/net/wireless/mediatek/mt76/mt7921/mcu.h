@@ -134,7 +134,10 @@ enum {
 };
 
 enum {
+	MCU_CE_EVENT_RX_ADDBA = 0x0a,
+	MCU_CE_EVENT_RX_DELBA = 0x0b,
 	MCU_CE_EVENT_CH_PRIVILEGE = 0x10,
+	MCU_CE_EVENT_TX_ADDBA = 0x2e,
 };
 
 #define MT7921_CE_NETWORK_AIS		0
@@ -436,5 +439,27 @@ struct mt7921_ce_bss_created {
 	__le16 bcn_interval;
 	__le16 atim_window;
 	u8 rsv[2];
+} __packed;
+
+struct mt7921_ce_rx_addba {
+	u8 sta_idx;
+	u8 dialog_token;
+	__le16 param;
+	__le16 timeout;
+	__le16 ssn;
+} __packed;
+
+struct mt7921_ce_rx_delba {
+	u8 sta_idx;
+	u8 tid;
+	u8 rsv[2];
+} __packed;
+
+struct mt7921_ce_tx_addba {
+	u8 sta_idx;
+	u8 tid;
+	u8 win_size;
+	u8 amsdu_bitmap;
+	__le16 ssn;
 } __packed;
 #endif
