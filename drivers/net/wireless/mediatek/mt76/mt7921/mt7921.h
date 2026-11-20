@@ -356,6 +356,7 @@ int mt7921_mcu_ce_default_key(struct mt792x_dev *dev,
 			      struct ieee80211_vif *vif, u8 key_id);
 int mt7921_mcu_ce_bss_created(struct mt792x_dev *dev,
 			      struct ieee80211_vif *vif);
+int mt7921_mcu_ce_set_rxfilter(struct mt792x_dev *dev, unsigned int fif);
 void mt7921_ce_ba_work(struct work_struct *work);
 int mt7921_mcu_get_temperature(struct mt792x_phy *phy);
 int mt7921_mcu_set_thermal_protect(struct mt792x_dev *dev);

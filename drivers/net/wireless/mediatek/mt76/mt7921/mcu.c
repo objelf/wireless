@@ -759,6 +759,30 @@ int mt7921_mcu_ce_bss_created(struct mt792x_dev *dev,
 				 &req, sizeof(req), false);
 }
 
+int mt7921_mcu_ce_set_rxfilter(struct mt792x_dev *dev, unsigned int fif)
+{
+	struct {
+		__le32 filter;
+		u8 rsv[64];
+	} __packed req = {
+		/* directed, multicast and broadcast data, plus the management
+		 * frames mac80211 has to see: action, auth, assoc request
+		 */
+		.filter = cpu_to_le32(BIT(0) | BIT(1) | BIT(3) |
+				      BIT(30) | BIT(29) | BIT(28)),
+	};
+
+	if (fif & FIF_ALLMULTI)
+		req.filter |= cpu_to_le32(BIT(2));
+	if (fif & FIF_OTHER_BSS)
+		req.filter |= cpu_to_le32(BIT(5));
+	if (fif & FIF_PROBE_REQ)
+		req.filter |= cpu_to_le32(BIT(31));
+
+	return mt76_mcu_send_msg(&dev->mt76, MCU_CE_CMD(SET_RX_FILTER),
+				 &req, sizeof(req), false);
+}
+
 /* Entry points shared by both firmwares. With the linux-firmware image each
  * of them makes the very call the driver made before.
  */
@@ -2502,6 +2526,12 @@ int mt7921_mcu_set_rxfilter(struct mt792x_dev *dev, u32 fif,
 		.bit_map = cpu_to_le32(bit_map),
 		.bit_op = bit_op,
 	};
+
+	/* register bitmap updates are a linux-firmware extension, see
+	 * mt7921_mcu_ce_set_rxfilter() for the legacy firmware
+	 */
+	if (dev->fw_legacy)
+		return 0;
 
 	return mt76_mcu_send_msg(&dev->mt76, MCU_CE_CMD(SET_RX_FILTER),
 				 &data, sizeof(data), false);

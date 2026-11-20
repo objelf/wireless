@@ -753,7 +753,10 @@ static void mt7921_configure_filter(struct ieee80211_hw *hw,
 	phy->rxfilter = flags;
 
 	mt792x_mutex_acquire(dev);
-	mt7921_mcu_set_rxfilter(dev, flags, 0, 0);
+	if (dev->fw_legacy)
+		mt7921_mcu_ce_set_rxfilter(dev, *total_flags);
+	else
+		mt7921_mcu_set_rxfilter(dev, flags, 0, 0);
 	mt792x_mutex_release(dev);
 
 	*total_flags &= (FIF_OTHER_BSS | FIF_FCSFAIL | FIF_CONTROL);
