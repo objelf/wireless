@@ -765,10 +765,12 @@ mt7921_mcu_ce_beacon(struct mt792x_dev *dev, struct ieee80211_hw *hw,
 {
 	struct mt792x_vif *mvif = (struct mt792x_vif *)vif->drv_priv;
 	struct ieee80211_mutable_offsets offs;
+	int tim_len = 2 + 3 + MT7921_CE_BCN_TIM_PVB_LEN;
 	struct mt7921_ce_beacon *req;
 	struct ieee80211_mgmt *mgmt;
 	struct sk_buff *bcn, *skb;
 	int hdr_len, tim_end;
+	u8 *tim;
 
 	if (!enable) {
 		struct mt7921_ce_beacon del = {
@@ -787,12 +789,15 @@ mt7921_mcu_ce_beacon(struct mt792x_dev *dev, struct ieee80211_hw *hw,
 	hdr_len = offsetof(struct ieee80211_mgmt, u.beacon.variable);
 	tim_end = offs.tim_offset + offs.tim_length;
 	if (bcn->len < hdr_len || offs.tim_offset < hdr_len ||
-	    tim_end > bcn->len) {
+	    !offs.tim_length || tim_end > bcn->len ||
+	    bcn->len - hdr_len - offs.tim_length + tim_len >
+	    MT7921_CE_BCN_MAX_IE_LEN) {
 		dev_kfree_skb(bcn);
 		return -EINVAL;
 	}
 
-	skb = mt76_mcu_msg_alloc(&dev->mt76, NULL, sizeof(*req) + bcn->len);
+	skb = mt76_mcu_msg_alloc(&dev->mt76, NULL,
+				 sizeof(*req) + bcn->len + tim_len);
 	if (!skb) {
 		dev_kfree_skb(bcn);
 		return -ENOMEM;
@@ -803,8 +808,15 @@ mt7921_mcu_ce_beacon(struct mt792x_dev *dev, struct ieee80211_hw *hw,
 	req->method = MT7921_CE_BCN_UPDATE_ALL;
 	req->bss_idx = mvif->bss_conf.mt76.idx;
 	req->capability = mgmt->u.beacon.capab_info;
-	/* the firmware builds the header and the TIM, hand it the rest */
+	/* The firmware builds the header and takes the elements. It fills
+	 * the TIM in by itself, all it wants from the host is a TIM element
+	 * of the size it works with, carrying the DTIM period.
+	 */
 	skb_put_data(skb, bcn->data + hdr_len, offs.tim_offset - hdr_len);
+	tim = skb_put_zero(skb, tim_len);
+	tim[0] = WLAN_EID_TIM;
+	tim[1] = tim_len - 2;
+	tim[3] = vif->bss_conf.dtim_period;
 	skb_put_data(skb, bcn->data + tim_end, bcn->len - tim_end);
 	req->ie_len = cpu_to_le16(skb->len - sizeof(*req));
 	dev_kfree_skb(bcn);

@@ -229,6 +229,9 @@ enum {
 
 #define MT7921_CE_BCN_UPDATE_ALL	1
 #define MT7921_CE_BCN_DELETE_ALL	2
+#define MT7921_CE_BCN_MAX_IE_LEN	600
+/* partial virtual bitmap the firmware keeps room for in the TIM */
+#define MT7921_CE_BCN_TIM_PVB_LEN	4
 
 #define MT7921_CE_HIF_SDIO		0
 #define MT7921_CE_HIF_USB		1
