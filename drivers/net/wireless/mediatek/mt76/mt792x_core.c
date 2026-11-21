@@ -893,31 +893,33 @@ int mt792x_init_wiphy(struct ieee80211_hw *hw)
 }
 EXPORT_SYMBOL_GPL(mt792x_init_wiphy);
 
-/* MT7921 is served by two firmwares that share one file name: the one in
- * linux-firmware and the reference design one, called the legacy firmware
- * here, which only takes the legacy command set. Tell them apart from what
- * the image carries.
+/* MT7921 and MT7902 are each served by two firmwares that share one file
+ * name: the one in linux-firmware and the reference design one, called the
+ * legacy firmware here, which only takes the legacy command set. Tell them
+ * apart from what the image carries.
  *
  * Every linux-firmware build since 20220908 has a feature tag in its release
  * info, older ones do not. An image built after that date without the tag is
  * taken as the legacy firmware.
  *
- * NOTE: the legacy firmware half of this rule is an assumption that has not
- * been checked against such an image yet. legacy_fw overrides it.
+ * The rule is not complete: the MT7902 reference package has legacy images
+ * both without the tag and with it, and the latter can only be told apart by
+ * what it answers. legacy_fw overrides the rule for such an image.
  */
 #define MT792x_FW_FEATURE_TAG_DATE	"20220908"
 
 static int mt792x_legacy_fw = -1;
 module_param_named(legacy_fw, mt792x_legacy_fw, int, 0444);
 MODULE_PARM_DESC(legacy_fw,
-		 "MT7921 legacy firmware flow (-1: detect, 0: never, 1: always)");
+		 "MT7921/MT7902 legacy firmware flow (-1: detect, 0: never, 1: always)");
 
 static bool
 mt792x_fw_is_legacy(const char *fw_wm,
 		    const struct mt76_connac2_fw_trailer *hdr,
 		    bool feature_tag)
 {
-	if (strcmp(fw_wm, MT7921_FIRMWARE_WM))
+	if (strcmp(fw_wm, MT7921_FIRMWARE_WM) &&
+	    strcmp(fw_wm, MT7902_FIRMWARE_WM))
 		return false;
 
 	if (mt792x_legacy_fw >= 0)
