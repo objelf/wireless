@@ -165,6 +165,30 @@ static void mt7921_mac_sta_poll(struct mt792x_dev *dev)
 	}
 }
 
+/* The interface of a group-addressed frame, from the entry it matched: a
+ * station of the interface or the entry of the interface itself.
+ */
+static struct ieee80211_vif *
+mt7921_mac_rx_group_vif(struct mt792x_dev *dev, u16 idx)
+{
+	struct mt76_wcid *wcid = mt76_wcid_ptr(dev, idx);
+	struct mt792x_link_sta *mlink;
+	struct mt792x_vif *mvif;
+
+	if (!wcid)
+		return NULL;
+
+	if (wcid->sta) {
+		mlink = container_of(wcid, struct mt792x_link_sta, wcid);
+		mvif = mlink->sta->vif;
+	} else {
+		mvif = container_of(wcid, struct mt792x_vif, sta.deflink.wcid);
+	}
+
+	return mvif ? container_of((void *)mvif, struct ieee80211_vif, drv_priv) :
+		      NULL;
+}
+
 static int
 mt7921_mac_fill_rx(struct mt792x_dev *dev, struct sk_buff *skb)
 {
@@ -383,19 +407,25 @@ mt7921_mac_fill_rx(struct mt792x_dev *dev, struct sk_buff *skb)
 	 * on, while the port is not authorized yet. mac80211 drops 802.3 frames
 	 * of such a station, the EAPOL frames of the handshake among them, so
 	 * hand it the 802.11 frame.
+	 * It translates the group-addressed frames from the AP as well, which
+	 * have no station (mt792x_rx_get_wcid()) and mac80211 drops as 802.3
+	 * frames, so hand it the 802.11 frame of these too.
 	 */
 	if (hdr_trans &&
-	    (ieee80211_has_morefrags(fc) ||
+	    (!unicast || ieee80211_has_morefrags(fc) ||
 	     (status->wcid &&
 	      !test_bit(MT_WCID_FLAG_HDR_TRANS, &status->wcid->flags)))) {
-		struct ieee80211_vif *vif;
+		struct ieee80211_vif *vif = NULL;
 		int err;
 
-		if (!msta || !msta->vif)
+		if (!unicast)
+			vif = mt7921_mac_rx_group_vif(dev, idx);
+		else if (msta && msta->vif)
+			vif = container_of((void *)msta->vif,
+					   struct ieee80211_vif, drv_priv);
+		if (!vif)
 			return -EINVAL;
 
-		vif = container_of((void *)msta->vif, struct ieee80211_vif,
-				   drv_priv);
 		err = mt76_connac2_reverse_frag0_hdr_trans(vif, skb, hdr_gap);
 		if (err)
 			return err;
