@@ -973,18 +973,28 @@ int mt76_connac2_reverse_frag0_hdr_trans(struct ieee80211_vif *vif,
 	struct mt76_rx_status *status = (struct mt76_rx_status *)skb->cb;
 	struct ethhdr *eth_hdr = (struct ethhdr *)(skb->data + hdr_offset);
 	__le32 *rxd = (__le32 *)skb->data;
-	struct ieee80211_sta *sta;
 	struct ieee80211_hdr hdr;
+	const u8 *ta, *ra;
 	u16 frame_control;
-
-	if (le32_get_bits(rxd[3], MT_RXD3_NORMAL_ADDR_TYPE) !=
-	    MT_RXD3_NORMAL_U2M)
-		return -EINVAL;
 
 	if (!(le32_to_cpu(rxd[1]) & MT_RXD1_NORMAL_GROUP_4))
 		return -EINVAL;
 
-	sta = container_of((void *)status->wcid, struct ieee80211_sta, drv_priv);
+	if (le32_get_bits(rxd[3], MT_RXD3_NORMAL_ADDR_TYPE) ==
+	    MT_RXD3_NORMAL_U2M) {
+		struct ieee80211_sta *sta;
+
+		sta = container_of((void *)status->wcid, struct ieee80211_sta,
+				   drv_priv);
+		ra = vif->addr;
+		ta = sta->addr;
+	} else if (vif->type == NL80211_IFTYPE_STATION) {
+		/* group-addressed, from the AP */
+		ra = eth_hdr->h_dest;
+		ta = vif->bss_conf.bssid;
+	} else {
+		return -EINVAL;
+	}
 
 	/* store the info from RXD and ethhdr to avoid being overridden */
 	frame_control = le32_get_bits(rxd[6], MT_RXD6_FRAME_CONTROL);
@@ -992,8 +1002,8 @@ int mt76_connac2_reverse_frag0_hdr_trans(struct ieee80211_vif *vif,
 	hdr.seq_ctrl = cpu_to_le16(le32_get_bits(rxd[8], MT_RXD8_SEQ_CTRL));
 	hdr.duration_id = 0;
 
-	ether_addr_copy(hdr.addr1, vif->addr);
-	ether_addr_copy(hdr.addr2, sta->addr);
+	ether_addr_copy(hdr.addr1, ra);
+	ether_addr_copy(hdr.addr2, ta);
 	switch (frame_control & (IEEE80211_FCTL_TODS |
 				 IEEE80211_FCTL_FROMDS)) {
 	case 0:
