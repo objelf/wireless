@@ -1179,7 +1179,7 @@ mt7921_hw_scan(struct ieee80211_hw *hw, struct ieee80211_vif *vif,
 	int err;
 
 	mt792x_mutex_acquire(dev);
-	err = mt76_connac_mcu_hw_scan(mphy, vif, req);
+	err = __mt76_connac_mcu_hw_scan(mphy, vif, req, dev->fw_legacy);
 	mt792x_mutex_release(dev);
 
 	return err;

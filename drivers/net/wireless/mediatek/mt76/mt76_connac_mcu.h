@@ -2088,8 +2088,16 @@ int mt76_connac_mcu_start_firmware(struct mt76_dev *dev, u32 addr, u32 option);
 
 void mt76_connac_mcu_build_rnr_scan_param(struct mt76_dev *mdev,
 					  struct cfg80211_scan_request *sreq);
-int mt76_connac_mcu_hw_scan(struct mt76_phy *phy, struct ieee80211_vif *vif,
-			    struct ieee80211_scan_request *scan_req);
+int __mt76_connac_mcu_hw_scan(struct mt76_phy *phy, struct ieee80211_vif *vif,
+			      struct ieee80211_scan_request *scan_req,
+			      bool legacy);
+
+static inline int
+mt76_connac_mcu_hw_scan(struct mt76_phy *phy, struct ieee80211_vif *vif,
+			struct ieee80211_scan_request *scan_req)
+{
+	return __mt76_connac_mcu_hw_scan(phy, vif, scan_req, false);
+}
 int mt76_connac_mcu_cancel_hw_scan(struct mt76_phy *phy,
 				   struct ieee80211_vif *vif);
 int mt76_connac_mcu_sched_scan_req(struct mt76_phy *phy,

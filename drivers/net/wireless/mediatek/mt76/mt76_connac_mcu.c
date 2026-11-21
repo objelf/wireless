@@ -1807,8 +1807,16 @@ void mt76_connac_mcu_build_rnr_scan_param(struct mt76_dev *mdev,
 EXPORT_SYMBOL_GPL(mt76_connac_mcu_build_rnr_scan_param);
 
 #define MT76_CONNAC_SCAN_CHANNEL_TIME		60
-int mt76_connac_mcu_hw_scan(struct mt76_phy *phy, struct ieee80211_vif *vif,
-			    struct ieee80211_scan_request *scan_req)
+/* The legacy firmware of MT7921 and MT7902 takes the scan request in the
+ * layout of the reference driver, which is not packed: two bytes of padding
+ * align the extended SSIDs, and the request is 1188 bytes long. That firmware
+ * drops a request of any other length without a word.
+ */
+#define MT76_CONNAC_SCAN_LEGACY_PAD	2
+
+int __mt76_connac_mcu_hw_scan(struct mt76_phy *phy, struct ieee80211_vif *vif,
+			      struct ieee80211_scan_request *scan_req,
+			      bool legacy)
 {
 	struct mt76_vif_link *mvif = (struct mt76_vif_link *)vif->drv_priv;
 	struct cfg80211_scan_request *sreq = &scan_req->req;
@@ -1827,7 +1835,8 @@ int mt76_connac_mcu_hw_scan(struct mt76_phy *phy, struct ieee80211_vif *vif,
 	if (sreq->ie_len > sizeof(req->ies))
 		return -EINVAL;
 
-	skb = mt76_mcu_msg_alloc(mdev, NULL, sizeof(*req));
+	skb = mt76_mcu_msg_alloc(mdev, NULL, sizeof(*req) +
+				 (legacy ? MT76_CONNAC_SCAN_LEGACY_PAD : 0));
 	if (!skb)
 		return -ENOMEM;
 
@@ -1908,6 +1917,16 @@ int mt76_connac_mcu_hw_scan(struct mt76_phy *phy, struct ieee80211_vif *vif,
 		req->scan_func |= SCAN_FUNC_RANDOM_MAC;
 	}
 
+	if (legacy) {
+		size_t off = offsetof(struct mt76_connac_hw_scan_req, ext_ssids);
+		u8 *data = (u8 *)req;
+
+		skb_put_zero(skb, MT76_CONNAC_SCAN_LEGACY_PAD);
+		memmove(data + off + MT76_CONNAC_SCAN_LEGACY_PAD, data + off,
+			sizeof(*req) - off);
+		memset(data + off, 0, MT76_CONNAC_SCAN_LEGACY_PAD);
+	}
+
 	err = mt76_mcu_skb_send_msg(mdev, skb, MCU_CE_CMD(START_HW_SCAN),
 				    false);
 	if (err < 0)
@@ -1915,7 +1934,7 @@ int mt76_connac_mcu_hw_scan(struct mt76_phy *phy, struct ieee80211_vif *vif,
 
 	return err;
 }
-EXPORT_SYMBOL_GPL(mt76_connac_mcu_hw_scan);
+EXPORT_SYMBOL_GPL(__mt76_connac_mcu_hw_scan);
 
 int mt76_connac_mcu_cancel_hw_scan(struct mt76_phy *phy,
 				   struct ieee80211_vif *vif)
