@@ -6,10 +6,35 @@
 #include "mt792x.h"
 #include "mt792x_regs.h"
 
+/* On USB nothing tells the host when the firmware stops WFDMA, e.g. to
+ * recover from a hardware error: commands and frames then stall with no
+ * MCU timeout, so no reset either. Look at the DMA enables instead.
+ */
+static bool mt792xu_wfdma_stopped(struct mt792x_dev *dev)
+{
+	u32 mask = MT_WFDMA0_GLO_CFG_TX_DMA_EN | MT_WFDMA0_GLO_CFG_RX_DMA_EN;
+	u32 val;
+
+	if (!mt76_is_usb(&dev->mt76) ||
+	    test_bit(MT76_RESET, &dev->mphy.state))
+		return false;
+
+	val = mt76_rr(dev, MT_UWFDMA0_GLO_CFG);
+	if (val == ~0 || (val & mask) == mask)
+		return false;
+
+	dev_warn(dev->mt76.dev,
+		 "WFDMA stopped (GLO_CFG 0x%08x, SER event 0x%08x), resetting\n",
+		 val, mt76_rr(dev, MT_WF_SW_DEF_CR_USB_MCU_EVENT));
+
+	return true;
+}
+
 void mt792x_mac_work(struct work_struct *work)
 {
 	struct mt792x_phy *phy;
 	struct mt76_phy *mphy;
+	bool stopped = false;
 
 	mphy = (struct mt76_phy *)container_of(work, struct mt76_phy,
 					       mac_work.work);
@@ -18,13 +43,20 @@ void mt792x_mac_work(struct work_struct *work)
 	mt792x_mutex_acquire(phy->dev);
 
 	mt76_update_survey(mphy);
-	if (++mphy->mac_work_count == 2) {
-		mphy->mac_work_count = 0;
-
+	if (!(++mphy->mac_work_count % 2))
 		mt792x_mac_update_mib_stats(phy);
+
+	/* every 2 s */
+	if (mphy->mac_work_count == 8) {
+		mphy->mac_work_count = 0;
+		stopped = mt792xu_wfdma_stopped(phy->dev);
 	}
 
 	mt792x_mutex_release(phy->dev);
+
+	/* the reset work cancels this work once it runs */
+	if (stopped)
+		mt792x_reset(&phy->dev->mt76);
 
 	mt76_tx_status_check(mphy->dev, false);
 	ieee80211_queue_delayed_work(phy->mt76->hw, &mphy->mac_work,
