@@ -328,6 +328,10 @@ mt7921_add_interface(struct ieee80211_hw *hw, struct ieee80211_vif *vif)
 	mvif->bss_conf.mt76.band_idx = 0;
 	mvif->bss_conf.mt76.wmm_idx = mvif->bss_conf.mt76.idx % MT76_CONNAC_MAX_WMM_SETS;
 
+	/* the device add takes the broadcast entry along */
+	idx = MT792x_WTBL_RESERVED - mvif->bss_conf.mt76.idx;
+	mvif->sta.deflink.wcid.idx = idx;
+
 	ret = mt7921_mcu_add_dev(dev, vif, true);
 	if (ret)
 		goto out;
@@ -335,10 +339,7 @@ mt7921_add_interface(struct ieee80211_hw *hw, struct ieee80211_vif *vif)
 	dev->mt76.vif_mask |= BIT_ULL(mvif->bss_conf.mt76.idx);
 	phy->omac_mask |= BIT_ULL(mvif->bss_conf.mt76.omac_idx);
 
-	idx = MT792x_WTBL_RESERVED - mvif->bss_conf.mt76.idx;
-
 	INIT_LIST_HEAD(&mvif->sta.deflink.wcid.poll_list);
-	mvif->sta.deflink.wcid.idx = idx;
 	mvif->sta.deflink.wcid.tx_info |= MT_WCID_TX_INFO_SET;
 	mt76_wcid_init(&mvif->sta.deflink.wcid, mvif->bss_conf.mt76.band_idx);
 
