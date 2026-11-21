@@ -481,7 +481,7 @@ mt7921_mcu_ce_sta_update(struct mt792x_dev *dev, struct ieee80211_sta *sta,
 	struct mt7921_ce_sta_rec *req;
 	struct mt792x_sta *msta;
 	struct sk_buff *skb;
-	int rssi;
+	int rssi, err;
 
 	BUILD_BUG_ON(sizeof(*req) != 200);
 
@@ -595,8 +595,20 @@ mt7921_mcu_ce_sta_update(struct mt792x_dev *dev, struct ieee80211_sta *sta,
 		req->max_amsdu_len = cpu_to_le32(MT7921_CE_MAX_AMSDU_LEN);
 	}
 
-	return mt76_mcu_skb_send_msg(&dev->mt76, skb,
-				     MCU_CE_CMD(UPDATE_STA_REC), false);
+	err = mt76_mcu_skb_send_msg(&dev->mt76, skb,
+				    MCU_CE_CMD(UPDATE_STA_REC), false);
+	if (err || state != MT76_STA_INFO_STATE_ASSOC)
+		return err;
+
+	/* Taking the station to the associated state makes the firmware drop
+	 * what is queued for it. The reference driver holds the station's
+	 * frames until the firmware answers this update; no answer comes here,
+	 * so read a CR through the firmware, which handles commands in order:
+	 * the update is done before e.g. the association response is queued.
+	 */
+	mt76_connac_mcu_reg_rr(&dev->mt76, MT_PSE_BASE);
+
+	return 0;
 }
 
 static int mt7921_mcu_ce_cipher(u32 cipher)
