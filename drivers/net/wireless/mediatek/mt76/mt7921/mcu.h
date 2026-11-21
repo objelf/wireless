@@ -226,6 +226,9 @@ enum {
 
 #define MT7921_CE_CH_REQ		0
 #define MT7921_CE_CH_ABORT		1
+#define MT7921_CE_CH_REQ_START_BSS	3	/* req_type, legacy only */
+/* longest the firmware keeps the grant; it is released once the BSS is up */
+#define MT7921_CE_START_BSS_MAX_MS	5000
 
 #define MT7921_CE_BCN_UPDATE_ALL	1
 #define MT7921_CE_BCN_MAX_IE_LEN	600

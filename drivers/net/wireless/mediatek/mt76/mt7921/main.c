@@ -1470,6 +1470,20 @@ mt7921_channel_switch_beacon(struct ieee80211_hw *hw,
 	mt792x_mutex_release(dev);
 }
 
+/* Called with the mutex held: a roc_work already queued by the timer
+ * takes the mutex first and then finds MT76_STATE_ROC clear, so the
+ * timer needs no synchronous delete here.
+ */
+static void mt7921_ce_release_ch(struct mt792x_phy *phy,
+				 struct mt792x_vif *mvif)
+{
+	if (!test_and_clear_bit(MT76_STATE_ROC, &phy->mt76->state))
+		return;
+
+	timer_delete(&phy->roc_timer);
+	mt7921_mcu_abort_roc(phy, mvif, phy->roc_token_id);
+}
+
 static int
 mt7921_start_ap(struct ieee80211_hw *hw, struct ieee80211_vif *vif,
 		struct ieee80211_bss_conf *link_conf)
@@ -1479,6 +1493,20 @@ mt7921_start_ap(struct ieee80211_hw *hw, struct ieee80211_vif *vif,
 	int err;
 
 	mt792x_mutex_acquire(dev);
+
+	/* The legacy firmware takes the radio to the channel of a BSS it
+	 * starts, band switch included, when it grants the channel for it;
+	 * the reference driver asks for that grant before it starts an AP.
+	 * Once the BSS is up the firmware stays on its channel.
+	 */
+	if (dev->fw_legacy) {
+		err = mt7921_set_roc(&dev->phy, mvif,
+				     link_conf->chanreq.oper.chan,
+				     MT7921_CE_START_BSS_MAX_MS,
+				     MT7921_CE_CH_REQ_START_BSS);
+		if (err)
+			goto out;
+	}
 
 	err = mt7921_mcu_add_bss(dev, vif, NULL, true,
 				 mvif->bss_conf.mt76.ctx);
@@ -1501,6 +1529,8 @@ mt7921_start_ap(struct ieee80211_hw *hw, struct ieee80211_vif *vif,
 	err = mt7921_mcu_sta_update(dev, NULL, vif, true,
 				    MT76_STA_INFO_STATE_NONE);
 out:
+	if (dev->fw_legacy)
+		mt7921_ce_release_ch(&dev->phy, mvif);
 	mt792x_mutex_release(dev);
 
 	return err;
