@@ -365,7 +365,7 @@ mt7921_mcu_ce_bss_info(struct mt792x_dev *dev, struct ieee80211_vif *vif,
 	u32 rates = conf->basic_rates;
 
 	BUILD_BUG_ON(sizeof(struct mt7921_ce_bss_rlm) != 22);
-	BUILD_BUG_ON(sizeof(req) != 120);
+	BUILD_BUG_ON(sizeof(req) != 116);
 
 	sband = mt76_hw(dev)->wiphy->bands[band];
 

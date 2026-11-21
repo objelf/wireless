@@ -334,7 +334,7 @@ struct mt7921_ce_bss_info {
 	u8 max_bssid_indicator;
 	u8 mbssid_idx;
 	__le64 iot_ap_act_ext;
-	u8 rsv4[8];
+	u8 rsv4[4];
 } __packed;
 
 struct mt7921_ce_sta_rec {
