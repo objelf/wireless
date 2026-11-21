@@ -988,6 +988,13 @@ void mt7921_mac_sta_remove(struct mt76_dev *mdev, struct ieee80211_vif *vif,
 	mt76_connac_free_pending_tx_skbs(&dev->pm, &msta->deflink.wcid);
 	mt76_connac_pm_wake(&dev->mphy, &dev->pm);
 
+	/* the legacy firmware has to see the station leave the associated
+	 * state before its record goes, or it trips over what is left of it
+	 * when a station with the same index comes back
+	 */
+	if (dev->fw_legacy)
+		mt7921_mcu_sta_update(dev, sta, vif, true,
+				      MT76_STA_INFO_STATE_NONE);
 	mt7921_mcu_sta_update(dev, sta, vif, false, MT76_STA_INFO_STATE_NONE);
 	mt7921_mac_wtbl_update(dev, msta->deflink.wcid.idx,
 			       MT_WTBL_UPDATE_ADM_COUNT_CLEAR);
