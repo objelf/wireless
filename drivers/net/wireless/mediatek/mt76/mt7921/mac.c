@@ -378,7 +378,16 @@ mt7921_mac_fill_rx(struct mt792x_dev *dev, struct sk_buff *skb)
 	}
 
 	hdr_gap = (u8 *)rxd - skb->data + 2 * remove_pad;
-	if (hdr_trans && ieee80211_has_morefrags(fc)) {
+	/* The legacy firmware translates the header of the unicast frames of
+	 * a station before mac80211 turned the decap offload of the station
+	 * on, while the port is not authorized yet. mac80211 drops 802.3 frames
+	 * of such a station, the EAPOL frames of the handshake among them, so
+	 * hand it the 802.11 frame.
+	 */
+	if (hdr_trans &&
+	    (ieee80211_has_morefrags(fc) ||
+	     (status->wcid &&
+	      !test_bit(MT_WCID_FLAG_HDR_TRANS, &status->wcid->flags)))) {
 		struct ieee80211_vif *vif;
 		int err;
 
