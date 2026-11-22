@@ -1459,37 +1459,21 @@ mt7925_mcu_sta_key_tlv(struct mt76_wcid *wcid,
 		if (cipher == CONNAC3_CIPHER_NONE)
 			return -EOPNOTSUPP;
 
-		/* STA/AP mode installs the IGTK together with the CCMP GTK that
-		 * sta_key_conf cached earlier on the same link.  NAN has no such
-		 * pairing: no CCMP key is ever installed on a NAN interface WTBL,
-		 * so sta_key_conf would contribute a zero key and a stale key_id.
-		 * Install the NAN BIP key standalone via the generic path instead.
+		/* The IGTK goes in alone, with its own index, as any other key.
+		 * Given behind the GTK in a key of 32 bytes, it was not the key
+		 * of the BIP MIC: the hardware computed that MIC with the GTK
+		 * for the frames it sent, and checked the frames it received
+		 * against it too.
 		 */
-		if (cipher == CONNAC3_CIPHER_BIP_CMAC_128 &&
-		    vif->type != NL80211_IFTYPE_NAN &&
-		    vif->type != NL80211_IFTYPE_NAN_DATA) {
-			sec->cipher_id = CONNAC3_CIPHER_BIP_CMAC_128;
-			sec->key_id = sta_key_conf->keyidx;
-			sec->key_len = 32;
-			memcpy(sec->key, sta_key_conf->key, 16);
-			memcpy(sec->key + 16, key->key, 16);
-		} else {
-			sec->cipher_id = cipher;
-			sec->key_id = key->keyidx;
-			sec->key_len = key->keylen;
-			memcpy(sec->key, key->key, key->keylen);
+		sec->cipher_id = cipher;
+		sec->key_id = key->keyidx;
+		sec->key_len = key->keylen;
+		memcpy(sec->key, key->key, key->keylen);
 
-			if (cipher == CONNAC3_CIPHER_TKIP) {
-				/* Rx/Tx MIC keys are swapped */
-				memcpy(sec->key + 16, key->key + 24, 8);
-				memcpy(sec->key + 24, key->key + 16, 8);
-			}
-
-			/* store key_conf for BIP batch update */
-			if (cipher == CONNAC3_CIPHER_AES_CCMP) {
-				memcpy(sta_key_conf->key, key->key, key->keylen);
-				sta_key_conf->keyidx = key->keyidx;
-			}
+		if (cipher == CONNAC3_CIPHER_TKIP) {
+			/* Rx/Tx MIC keys are swapped */
+			memcpy(sec->key + 16, key->key + 24, 8);
+			memcpy(sec->key + 24, key->key + 16, 8);
 		}
 	} else {
 		sec->add = 0;
