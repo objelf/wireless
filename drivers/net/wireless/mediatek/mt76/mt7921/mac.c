@@ -226,8 +226,6 @@ mt7921_mac_fill_rx(struct mt792x_dev *dev, struct sk_buff *skb)
 		return -EINVAL;
 
 	hdr_trans = rxd2 & MT_RXD2_NORMAL_HDR_TRANS;
-	if (hdr_trans && (rxd1 & MT_RXD1_NORMAL_CM))
-		return -EINVAL;
 
 	/* ICV error or CCMP/BIP/WPI MIC error */
 	if (rxd1 & MT_RXD1_NORMAL_ICV_ERR)
@@ -456,6 +454,19 @@ mt7921_mac_fill_rx(struct mt792x_dev *dev, struct sk_buff *skb)
 			qos_ctl = *ieee80211_get_qos_ctl(hdr);
 		}
 	} else {
+		struct ethhdr *eh = (struct ethhdr *)skb->data;
+
+		/* A cipher mismatch is an unprotected frame from a peer that
+		 * has a key. mac80211 does not check the protection of 802.3
+		 * frames: pass on the EAPOL frames only, as its 802.11 path
+		 * does. wpa_supplicant sends message 4/4 of a PTK rekey in the
+		 * clear.
+		 */
+		if ((rxd1 & MT_RXD1_NORMAL_CM) &&
+		    (skb->len < ETH_HLEN ||
+		     eh->h_proto != cpu_to_be16(ETH_P_PAE)))
+			return -EINVAL;
+
 		status->flag |= RX_FLAG_8023;
 	}
 
