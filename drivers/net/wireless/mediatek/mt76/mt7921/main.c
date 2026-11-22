@@ -602,11 +602,15 @@ static int mt7921_set_key(struct ieee80211_hw *hw, enum set_key_cmd cmd,
 		if (!mvif->wep_sta && (cmd == SET_KEY || !dev->fw_legacy))
 			return -EOPNOTSUPP;
 		break;
+	case WLAN_CIPHER_SUITE_CCMP_256:
+	case WLAN_CIPHER_SUITE_GCMP_256:
+		/* the legacy firmware has them for a station only */
+		if (dev->fw_legacy && vif->type == NL80211_IFTYPE_AP)
+			return -EOPNOTSUPP;
+		break;
 	case WLAN_CIPHER_SUITE_TKIP:
 	case WLAN_CIPHER_SUITE_CCMP:
-	case WLAN_CIPHER_SUITE_CCMP_256:
 	case WLAN_CIPHER_SUITE_GCMP:
-	case WLAN_CIPHER_SUITE_GCMP_256:
 	case WLAN_CIPHER_SUITE_SMS4:
 		break;
 	default:
