@@ -201,25 +201,34 @@ out:
 	}
 }
 
-/* The HW does not translate the mac header to 802.3 for mesh point */
-static int mt7925_reverse_frag0_hdr_trans(struct sk_buff *skb, u16 hdr_gap)
+/* The HW does not translate the mac header to 802.3 for mesh point.
+ * wcid is the entry the frame matched: for a group-addressed frame the
+ * station that sent it, not the entry of the interface it goes to.
+ */
+static int mt7925_reverse_frag0_hdr_trans(struct sk_buff *skb, u16 hdr_gap,
+					  struct mt76_wcid *wcid)
 {
-	struct mt76_rx_status *status = (struct mt76_rx_status *)skb->cb;
 	struct ethhdr *eth_hdr = (struct ethhdr *)(skb->data + hdr_gap);
-	struct mt792x_sta *msta = (struct mt792x_sta *)status->wcid;
 	__le32 *rxd = (__le32 *)skb->data;
+	struct mt792x_link_sta *mlink;
 	struct ieee80211_sta *sta;
 	struct ieee80211_vif *vif;
 	struct ieee80211_hdr hdr;
+	struct mt792x_sta *msta;
 	u16 frame_control;
+	bool unicast;
 
-	if (le32_get_bits(rxd[3], MT_RXD3_NORMAL_ADDR_TYPE) !=
-	    MT_RXD3_NORMAL_U2M)
-		return -EINVAL;
+	unicast = le32_get_bits(rxd[3], MT_RXD3_NORMAL_ADDR_TYPE) ==
+		  MT_RXD3_NORMAL_U2M;
 
 	if (!(le32_to_cpu(rxd[1]) & MT_RXD1_NORMAL_GROUP_4))
 		return -EINVAL;
 
+	if (!wcid || !wcid->sta)
+		return -EINVAL;
+
+	mlink = container_of(wcid, struct mt792x_link_sta, wcid);
+	msta = mlink->sta;
 	if (!msta || !msta->vif)
 		return -EINVAL;
 
@@ -232,7 +241,7 @@ static int mt7925_reverse_frag0_hdr_trans(struct sk_buff *skb, u16 hdr_gap)
 	hdr.seq_ctrl = cpu_to_le16(le32_get_bits(rxd[10], MT_RXD10_SEQ_CTRL));
 	hdr.duration_id = 0;
 
-	ether_addr_copy(hdr.addr1, vif->addr);
+	ether_addr_copy(hdr.addr1, unicast ? vif->addr : eth_hdr->h_dest);
 	ether_addr_copy(hdr.addr2, sta->addr);
 	switch (frame_control & (IEEE80211_FCTL_TODS |
 				 IEEE80211_FCTL_FROMDS)) {
@@ -583,8 +592,14 @@ mt7925_mac_fill_rx(struct mt792x_dev *dev, struct sk_buff *skb)
 	}
 
 	hdr_gap = (u8 *)rxd - skb->data + 2 * remove_pad;
-	if (hdr_trans && ieee80211_has_morefrags(fc)) {
-		if (mt7925_reverse_frag0_hdr_trans(skb, hdr_gap))
+	/* With WEP the hardware translates the group-addressed frames from
+	 * the AP too. They have no station (mt792x_rx_get_wcid()) and
+	 * mac80211 drops an 802.3 frame without one, so hand it the 802.11
+	 * frame.
+	 */
+	if (hdr_trans && (!unicast || ieee80211_has_morefrags(fc))) {
+		if (mt7925_reverse_frag0_hdr_trans(skb, hdr_gap,
+						   mt76_wcid_ptr(dev, idx)))
 			return -EINVAL;
 		hdr_trans = false;
 	} else {
