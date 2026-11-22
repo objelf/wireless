@@ -521,8 +521,14 @@ void mt792xu_disconnect(struct usb_interface *usb_intf)
 	set_bit(MT76_MCU_RESET, &dev->mphy.state);
 	wake_up(&dev->mt76.mcu.wait);
 	skb_queue_purge(&dev->mt76.mcu.res_q);
+	/* The firmware may be in the middle of a coredump. The work that
+	 * collects it ends in a chip reset: it must not run from here on.
+	 */
+	disable_delayed_work_sync(&dev->coredump.work);
 	cancel_work_sync(&dev->reset_work);
 	mt792xu_cleanup(dev);
+	/* RX is stopped, drop the coredump events that are still queued */
+	skb_queue_purge(&dev->coredump.msg_list);
 	set_bit(MT76_REMOVED, &dev->mphy.state);
 
 	usb_set_intfdata(usb_intf, NULL);
