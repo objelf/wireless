@@ -447,7 +447,7 @@ struct mt7921_ce_key {
 struct mt7921_ce_default_key {
 	u8 bss_idx;
 	u8 key_id;
-	u8 unicast;
+	u8 wlan_idx;
 	u8 multicast;
 } __packed;
 

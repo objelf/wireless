@@ -692,7 +692,8 @@ int mt7921_mcu_ce_default_key(struct mt792x_dev *dev,
 	struct mt7921_ce_default_key req = {
 		.bss_idx = mvif->bss_conf.mt76.idx,
 		.key_id = key_id,
-		.unicast = 1,
+		/* the entry the WEP keys are in */
+		.wlan_idx = mvif->sta.deflink.wcid.idx,
 		.multicast = 1,
 	};
 
