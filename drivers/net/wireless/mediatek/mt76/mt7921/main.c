@@ -596,7 +596,10 @@ static int mt7921_set_key(struct ieee80211_hw *hw, enum set_key_cmd cmd,
 		break;
 	case WLAN_CIPHER_SUITE_WEP40:
 	case WLAN_CIPHER_SUITE_WEP104:
-		if (!mvif->wep_sta)
+		/* the legacy firmware has the WEP keys in the interface
+		 * entry, so it can remove them once the station is gone
+		 */
+		if (!mvif->wep_sta && (cmd == SET_KEY || !dev->fw_legacy))
 			return -EOPNOTSUPP;
 		break;
 	case WLAN_CIPHER_SUITE_TKIP:
@@ -620,9 +623,13 @@ static int mt7921_set_key(struct ieee80211_hw *hw, enum set_key_cmd cmd,
 
 		/* For security issue we don't trigger the key deletion when
 		 * reassociating. But we should trigger the deletion process
-		 * to avoid using incorrect cipher after disconnection,
+		 * to avoid using incorrect cipher after disconnection.
+		 * The legacy firmware keeps the group and WEP keys in the
+		 * entry of the interface until they are removed, removing a
+		 * station does not drop them, so remove its keys always.
 		 */
-		if (vif->type != NL80211_IFTYPE_STATION || vif->cfg.assoc)
+		if (!dev->fw_legacy &&
+		    (vif->type != NL80211_IFTYPE_STATION || vif->cfg.assoc))
 			goto out;
 	}
 
@@ -633,10 +640,11 @@ static int mt7921_set_key(struct ieee80211_hw *hw, enum set_key_cmd cmd,
 		goto out;
 
 	/* A WEP key is set once the station is associated, and the entry
-	 * of the AP is there by then: it takes the key as well.
+	 * of the AP is there by then: it takes the key as well. That entry
+	 * is gone when the legacy firmware has the key removed.
 	 */
-	if (key->cipher == WLAN_CIPHER_SUITE_WEP104 ||
-	    key->cipher == WLAN_CIPHER_SUITE_WEP40) {
+	if ((key->cipher == WLAN_CIPHER_SUITE_WEP104 ||
+	     key->cipher == WLAN_CIPHER_SUITE_WEP40) && mvif->wep_sta) {
 		err = mt7921_mcu_add_key(dev, vif, NULL,
 					 &mvif->wep_sta->deflink.wcid,
 					 &mvif->wep_sta->deflink.bip, key, cmd);

@@ -648,9 +648,7 @@ mt7921_mcu_ce_add_key(struct mt792x_dev *dev, struct ieee80211_vif *vif,
 	bool ap = vif->type == NL80211_IFTYPE_AP;
 	struct mt7921_ce_key req = {
 		.add = cmd == SET_KEY,
-		.tx_key = pairwise || ap,
 		.pairwise = pairwise,
-		.authenticator = ap,
 		.bss_idx = mvif->bss_conf.mt76.idx,
 		.key_id = key->keyidx,
 		.wlan_idx = wcid->idx,
@@ -666,7 +664,6 @@ mt7921_mcu_ce_add_key(struct mt792x_dev *dev, struct ieee80211_vif *vif,
 	if (key->keylen > sizeof(req.key))
 		return -EINVAL;
 
-	req.cipher = cipher;
 	if (sta)
 		memcpy(req.addr, sta->addr, ETH_ALEN);
 	else if (ap)
@@ -674,7 +671,11 @@ mt7921_mcu_ce_add_key(struct mt792x_dev *dev, struct ieee80211_vif *vif,
 	else
 		memcpy(req.addr, vif->bss_conf.bssid, ETH_ALEN);
 
+	/* a removal names the key only, as the reference driver does */
 	if (cmd == SET_KEY) {
+		req.tx_key = pairwise || ap;
+		req.authenticator = ap;
+		req.cipher = cipher;
 		req.key_len = key->keylen;
 		req.mgmt_protection = pairwise && sta && sta->mfp;
 		memcpy(req.key, key->key, key->keylen);
