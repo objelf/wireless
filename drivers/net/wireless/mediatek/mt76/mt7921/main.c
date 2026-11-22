@@ -1624,6 +1624,12 @@ static void mt7921_mgd_prepare_tx(struct ieee80211_hw *hw,
 	u16 duration = info->duration ? info->duration :
 		       jiffies_to_msecs(HZ);
 
+	/* the deauthentication or disassociation of a link goes out on its
+	 * own channel
+	 */
+	if (info->was_assoc)
+		return;
+
 	mt792x_mutex_acquire(dev);
 	mt7921_set_roc(mvif->phy, mvif, mvif->bss_conf.mt76.ctx->def.chan, duration,
 		       MT7921_ROC_REQ_JOIN);
@@ -1635,6 +1641,9 @@ static void mt7921_mgd_complete_tx(struct ieee80211_hw *hw,
 				   struct ieee80211_prep_tx_info *info)
 {
 	struct mt792x_vif *mvif = (struct mt792x_vif *)vif->drv_priv;
+
+	if (info->was_assoc)
+		return;
 
 	/* Keep the join ROC until the station is authorized, so that it
 	 * covers the 4-way handshake. mt7921_mac_sta_event() releases it.
