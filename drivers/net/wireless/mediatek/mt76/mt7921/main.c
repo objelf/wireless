@@ -632,16 +632,20 @@ static int mt7921_set_key(struct ieee80211_hw *hw, enum set_key_cmd cmd,
 	if (err)
 		goto out;
 
-	if (dev->fw_legacy) {
-		err = mt7921_ce_key_done(dev, vif, sta, key, cmd);
-		goto out;
-	}
-
+	/* A WEP key is set once the station is associated, and the entry
+	 * of the AP is there by then: it takes the key as well.
+	 */
 	if (key->cipher == WLAN_CIPHER_SUITE_WEP104 ||
-	    key->cipher == WLAN_CIPHER_SUITE_WEP40)
+	    key->cipher == WLAN_CIPHER_SUITE_WEP40) {
 		err = mt7921_mcu_add_key(dev, vif, NULL,
 					 &mvif->wep_sta->deflink.wcid,
 					 &mvif->wep_sta->deflink.bip, key, cmd);
+		if (err)
+			goto out;
+	}
+
+	if (dev->fw_legacy)
+		err = mt7921_ce_key_done(dev, vif, sta, key, cmd);
 out:
 	mt792x_mutex_release(dev);
 

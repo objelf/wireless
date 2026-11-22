@@ -633,14 +633,18 @@ static int mt7921_mcu_ce_cipher(u32 cipher)
 	}
 }
 
-/* @wcid is the peer for a pairwise key and the interface for a group key */
+/* @wcid is the peer for a pairwise key and the interface for a group key.
+ * A WEP key goes to both: for the entry of a peer it comes with no @sta, and
+ * is the pairwise key there.
+ */
 static int
 mt7921_mcu_ce_add_key(struct mt792x_dev *dev, struct ieee80211_vif *vif,
 		      struct ieee80211_sta *sta, struct mt76_wcid *wcid,
 		      struct ieee80211_key_conf *key, enum set_key_cmd cmd)
 {
 	struct mt792x_vif *mvif = (struct mt792x_vif *)vif->drv_priv;
-	bool pairwise = key->flags & IEEE80211_KEY_FLAG_PAIRWISE;
+	bool pairwise = key->flags & IEEE80211_KEY_FLAG_PAIRWISE ||
+			(!sta && wcid != &mvif->sta.deflink.wcid);
 	bool ap = vif->type == NL80211_IFTYPE_AP;
 	struct mt7921_ce_key req = {
 		.add = cmd == SET_KEY,
