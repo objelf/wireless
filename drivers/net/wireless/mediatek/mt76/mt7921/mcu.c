@@ -679,8 +679,10 @@ mt7921_mcu_ce_add_key(struct mt792x_dev *dev, struct ieee80211_vif *vif,
 		req.key_len = key->keylen;
 		req.mgmt_protection = pairwise && sta && sta->mfp;
 		memcpy(req.key, key->key, key->keylen);
-		if (key->cipher == WLAN_CIPHER_SUITE_TKIP) {
-			/* the firmware wants the RX MIC key first */
+		if (key->cipher == WLAN_CIPHER_SUITE_TKIP && !ap) {
+			/* a station gives the RX MIC key first, an AP the key
+			 * as it is
+			 */
 			memcpy(req.key + 16, key->key + 24, 8);
 			memcpy(req.key + 24, key->key + 16, 8);
 		}
