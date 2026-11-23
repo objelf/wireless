@@ -2768,6 +2768,13 @@ static void mt7925_unassign_vif_chanctx(struct ieee80211_hw *hw,
 		mconf = &mvif->bss_conf;
 	}
 
+	/* mt7925_change_chanctx() turns the sniffer on for a monitor. A real
+	 * monitor vif (NO_VIRTUAL_MONITOR) brings no CONF_CHANGE_MONITOR to
+	 * turn it off: do it here, while the vif still has its channel.
+	 */
+	if (vif->type == NL80211_IFTYPE_MONITOR)
+		mt7925_mcu_set_sniffer(dev, vif, false);
+
 	mctx->bss_conf = NULL;
 	mconf->mt76.ctx = NULL;
 	mutex_unlock(&dev->mt76.mutex);
