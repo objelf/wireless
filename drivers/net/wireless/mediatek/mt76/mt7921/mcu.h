@@ -171,7 +171,6 @@ enum {
 
 #define MT7921_CE_PHY_HR_DSSS		BIT(0)
 #define MT7921_CE_PHY_ERP		BIT(1)
-#define MT7921_CE_PHY_ERP_P2P		BIT(2)
 #define MT7921_CE_PHY_OFDM		BIT(3)
 #define MT7921_CE_PHY_HT		BIT(4)
 #define MT7921_CE_PHY_VHT		BIT(5)

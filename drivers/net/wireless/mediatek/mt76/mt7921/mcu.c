@@ -241,7 +241,7 @@ mt7921_mcu_ce_phy_type(struct mt792x_dev *dev, struct ieee80211_vif *vif,
 	if (band != NL80211_BAND_2GHZ)
 		type = MT7921_CE_PHY_OFDM;
 	else if (vif->p2p)
-		type = MT7921_CE_PHY_ERP_P2P;
+		type = MT7921_CE_PHY_ERP;
 	else
 		type = MT7921_CE_PHY_HR_DSSS | MT7921_CE_PHY_ERP;
 
